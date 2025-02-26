@@ -77,6 +77,20 @@
 			gpios = <&en7581_pinctrl 20 GPIO_ACTIVE_LOW>;
 			default-state = "on";
 		};
+
+		led-4 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_USB;
+			function-enumerator = <2>;
+			gpios = <&en7581_pinctrl 34 GPIO_ACTIVE_LOW>;
+		};
+
+		led-5 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_USB;
+			function-enumerator = <1>;
+			gpios = <&en7581_pinctrl 35 GPIO_ACTIVE_LOW>;
+		};
 	};
 };
 
