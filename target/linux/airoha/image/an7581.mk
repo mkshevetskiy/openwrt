@@ -41,6 +41,17 @@ define Device/airoha_an7581-evb-emmc
 endef
 TARGET_DEVICES += airoha_an7581-evb-emmc
 
+define Device/airoha_an7581-evb-emmc-an8831
+  DEVICE_VENDOR := Airoha
+  DEVICE_MODEL := AN7581 Evaluation Board (EMMC + AN8831)
+  DEVICE_DTS := an7581-evb-emmc-an8831
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-i2c-an7581
+  ARTIFACT/bl2-bl31-uboot.bin := an7581-bl2-bl31-uboot rfb
+  ARTIFACTS := bl2-bl31-uboot.bin
+endef
+TARGET_DEVICES += airoha_an7581-evb-emmc-an8831
+
 define Device/airoha_an7581-evb-10g-lan
   $(call Device/airoha_an7581-evb)
   DEVICE_MODEL := AN7581 Evaluation Board (SNAND + ETH-SERDES-LAN + PON)
