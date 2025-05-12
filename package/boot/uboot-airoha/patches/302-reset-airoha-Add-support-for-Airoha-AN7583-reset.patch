@@ -1,4 +1,4 @@
-From 0ffa8a9674ddf89c5660a5e402b299b07c390ef0 Mon Sep 17 00:00:00 2001
+From 30b906f71d1ec4daf3732f47dba127a29c55023c Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Tue, 29 Apr 2025 13:33:35 +0200
 Subject: [PATCH 3/3] reset: airoha: Add support for Airoha AN7583 reset
@@ -16,7 +16,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  create mode 100644 include/dt-bindings/reset/airoha,an7583-reset.h
 
 diff --git a/drivers/reset/reset-airoha.c b/drivers/reset/reset-airoha.c
-index e878af6167c..18eca724a40 100644
+index e878af6167c..20526c0b06d 100644
 --- a/drivers/reset/reset-airoha.c
 +++ b/drivers/reset/reset-airoha.c
 @@ -10,8 +10,10 @@
@@ -125,7 +125,7 @@ index e878af6167c..18eca724a40 100644
 +		return an7581_reset_probe(dev);
 +
 +	if (ofnode_device_is_compatible(dev_ofnode(dev),
-+					"airoha,en7583-scu"))
++					"airoha,an7583-scu"))
 +		return an7583_reset_probe(dev);
 +
 +	return -ENODEV;

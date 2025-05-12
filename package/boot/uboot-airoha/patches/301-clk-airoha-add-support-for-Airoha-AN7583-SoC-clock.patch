@@ -1,4 +1,4 @@
-From b92ece274710f44e28e80c24edcfd44505afb748 Mon Sep 17 00:00:00 2001
+From 5a8586309ca251444ecab5c7d3c47f55f7d38b61 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Tue, 29 Apr 2025 13:19:11 +0200
 Subject: [PATCH 2/3] clk: airoha: add support for Airoha AN7583 SoC clock
@@ -12,7 +12,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  1 file changed, 124 insertions(+)
 
 diff --git a/drivers/clk/airoha/clk-airoha.c b/drivers/clk/airoha/clk-airoha.c
-index 1b2c4c98de5..d6eafd600b5 100644
+index 1b2c4c98de5..7c14487c61c 100644
 --- a/drivers/clk/airoha/clk-airoha.c
 +++ b/drivers/clk/airoha/clk-airoha.c
 @@ -73,6 +73,14 @@ static const u32 bus7581_base[] = { 600000000, 540000000 };
@@ -149,7 +149,7 @@ index 1b2c4c98de5..d6eafd600b5 100644
  	.descs = en7581_base_clks,
  };
  
-+static const struct airoha_clk_soc_data en7583_data = {
++static const struct airoha_clk_soc_data an7583_data = {
 +	.num_clocks = ARRAY_SIZE(an7583_base_clks),
 +	.descs = an7583_base_clks,
 +};
@@ -158,8 +158,8 @@ index 1b2c4c98de5..d6eafd600b5 100644
  	{ .compatible = "airoha,en7581-scu",
  	  .data = (ulong)&en7581_data,
  	},
-+	{ .compatible = "airoha,en7583-scu",
-+	  .data = (ulong)&en7583_data,
++	{ .compatible = "airoha,an7583-scu",
++	  .data = (ulong)&an7583_data,
 +	},
  	{ }
  };
