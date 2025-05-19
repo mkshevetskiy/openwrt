@@ -24,3 +24,12 @@ define Device/airoha_an7583-evb
   ARTIFACTS := bl2-bl31-uboot.bin
 endef
 TARGET_DEVICES += airoha_an7583-evb
+
+define Device/airoha_an7583-evb-emmc
+  DEVICE_VENDOR := Airoha
+  DEVICE_MODEL := AN7583 Evaluation Board (EMMC)
+  DEVICE_DTS := an7583-evb-emmc
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-i2c-an7581
+endef
+TARGET_DEVICES += airoha_an7583-evb-emmc
