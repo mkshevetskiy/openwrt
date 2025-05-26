@@ -43,6 +43,7 @@ define Device/airoha_an7583-evb-emmc
   DEVICE_PACKAGES := kmod-i2c-an7581
   ARTIFACT/preloader.bin := an7583-preloader rfb
   ARTIFACT/bl31-uboot.fip := an7583-bl31-uboot rfb
+  ARTIFACT/bl2-bl31-uboot.bin := an7583-bl2-bl31-uboot rfb
   ARTIFACTS := preloader.bin bl31-uboot.fip
 endef
 TARGET_DEVICES += airoha_an7583-evb-emmc
