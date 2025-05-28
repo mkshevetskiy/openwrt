@@ -45,6 +45,11 @@
 	};
 };
 
+&snfi {
+	status = "okay";
+};
+
+
 &spi_nand {
 	partitions {
 		compatible = "fixed-partitions";
