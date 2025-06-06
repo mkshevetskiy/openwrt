@@ -1,0 +1,71 @@
+From 3d1cc840a060cb2a00b4af0c70fc29e8c3cadf90 Mon Sep 17 00:00:00 2001
+From: Oskar Nilsson <onilsson@rums.se>
+Date: Wed, 26 Mar 2025 10:22:44 +0100
+Subject: [PATCH] ubi: fix bug creating partitions for non-existent volumes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The part_get_info_ubi() function was incorrectly returning 0 (success)
+when a UBI volume was not found for a given partition index. This caused
+the part_create_block_devices() function in blk-uclass.c to continue
+creating devices for non-existent partitions up to MAX_SEARCH_PARTITIONS
+
+Fix the issue by returning -1 when a volume is not found, signaling to
+the part_create_block_devices() function that no more valid volumes
+exist.
+
+Before patch, 128 blk_partition are created:
+Class   Index  Probed  Driver        Name
+-------------------------------------------------
+root        0  [ + ]  root_driver    root_driver
+thermal     0  [   ]  imx_thermal    |-- imx_thermal
+simple_bus  0  [ + ]  simple_bus     |-- soc
+mtd         0  [ + ]  mxs-nand-dt    |   |-- nand-controller@1806000
+blk         0  [   ]  ubi_blk        |   |   `-- nand-controller@1806000.blk
+partition   0  [   ]  blk_partition  |   |       |-- nand-controller@1806000.blk:1
+...
+partition 127  [   ]  blk_partition  |   |       `-- nand-controller@1806000.blk:128
+
+After patch, the expected blk_partition are created:
+Class   Index  Probed  Driver        Name
+-------------------------------------------------
+root        0  [ + ]  root_driver    root_driver
+thermal     0  [   ]  imx_thermal    |-- imx_thermal
+simple_bus  0  [ + ]  simple_bus     |-- soc
+mtd         0  [ + ]  mxs-nand-dt    |   |-- nand-controller@1806000
+blk         0  [   ]  ubi_blk        |   |   `-- nand-controller@1806000.blk
+partition   0  [   ]  blk_partition  |   |       |-- nand-controller@1806000.blk:1
+partition   1  [   ]  blk_partition  |   |       |-- nand-controller@1806000.blk:2
+partition   2  [   ]  blk_partition  |   |       |-- nand-controller@1806000.blk:3
+partition   3  [   ]  blk_partition  |   |       `-- nand-controller@1806000.blk:4
+simple_bus  1  [ + ]  simple_bus     |   |-- bus@2000000
+
+Signed-off-by: Oskar Nilsson <onilsson@rums.se>
+Cc: Kyungmin Park <kmpark@infradead.org>
+Cc: Heiko Schocher <hs@denx.de>
+Cc: Alexey Romanov <avromanov@salutedevices.com>
+
+Changed in v2:
+ - Change return from -1 to -ENOENT
+Reviewed-by: Heiko Schocher <hs@denx.de>
+---
+ drivers/mtd/ubi/part.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/mtd/ubi/part.c b/drivers/mtd/ubi/part.c
+index 13d1f165c30..6c017eb7299 100644
+--- a/drivers/mtd/ubi/part.c
++++ b/drivers/mtd/ubi/part.c
+@@ -47,7 +47,7 @@ static int __maybe_unused part_get_info_ubi(struct blk_desc *dev_desc, int part_
+ 	 */
+ 	vol = ubi_get_volume_by_index(part_idx - 1);
+ 	if (!vol)
+-		return 0;
++		return -ENOENT;
+ 
+ 	snprintf(info->name, PART_NAME_LEN, vol->name);
+ 
+-- 
+2.48.1
+
