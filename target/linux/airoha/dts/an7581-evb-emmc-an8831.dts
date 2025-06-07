@@ -334,7 +334,8 @@
 
 		firmware-name = "as21x1x_fw.bin";
 
-		reset-deassert-us = <10000>;
+		reset-deassert-us = <100000>;
+		reset-assert-us = <200000>;
 		reset-gpios = <&en7581_pinctrl 30 GPIO_ACTIVE_LOW>;
 
 		leds {
@@ -364,7 +365,8 @@
 
 		firmware-name = "as21x1x_fw.bin";
 
-		reset-deassert-us = <10000>;
+		reset-deassert-us = <100000>;
+		reset-assert-us = <200000>;
 		reset-gpios = <&en7581_pinctrl 31 GPIO_ACTIVE_LOW>;
 
 		leds {
