@@ -1,15 +1,15 @@
-From 1bd4e70ccf8e77b48b3fcc7d2119cd042fa8c118 Mon Sep 17 00:00:00 2001
+From 6da9b90d0493d01ef16a4f2c373ea6da42dc52e8 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 30 May 2025 11:20:25 +0200
 Subject: [PATCH] net: phy: as21xxx: setup PTP clock for harcoded address
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- drivers/net/phy/as21xxx.c | 22 +++++++++++++++++++---
- 1 file changed, 19 insertions(+), 3 deletions(-)
+ drivers/net/phy/as21xxx.c | 32 +++++++++++++++++++++++++++++---
+ 1 file changed, 29 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/net/phy/as21xxx.c b/drivers/net/phy/as21xxx.c
-index 92697f43087d..21e790d2d55e 100644
+index 92697f43087d..62e3fa7d4b3e 100644
 --- a/drivers/net/phy/as21xxx.c
 +++ b/drivers/net/phy/as21xxx.c
 @@ -294,6 +294,11 @@ static struct as21xxx_led_pattern_info as21xxx_led_supported_pattern[] = {
@@ -32,12 +32,24 @@ index 92697f43087d..21e790d2d55e 100644
  	if (val > 1) {
  		phydev_err(phydev, "wrong origin mdio_indirect_status: %x\n", val);
  		return -EINVAL;
-@@ -884,17 +890,27 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
+@@ -605,6 +611,8 @@ static int as21xxx_probe(struct phy_device *phydev)
+ 	struct as21xxx_priv *priv;
+ 	int ret;
+ 
++	pr_info("Probing As21xxx\n");
++
+ 	priv = devm_kzalloc(&phydev->mdio.dev,
+ 			    sizeof(*priv), GFP_KERNEL);
+ 	if (!priv)
+@@ -884,26 +892,43 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
  	u32 phy_id;
  	int ret;
  
++	pr_info("Calling match for device %x\n", phydev->mdio.addr);
++
 +	if (phydev->mdio.addr == 0x1c ||
 +	    phydev->mdio.addr == 0x1d) {
++		pr_info("Force enabling PTP clock for %x\n", phydev->mdio.addr);
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, VEND1_PTP_CLK,
 +			      0x48);
 +		as21xxx_mdio_patch(phydev);
@@ -62,15 +74,28 @@ index 92697f43087d..21e790d2d55e 100644
  	if (ret < 0)
  		return ret;
  	phy_id |= ret;
-@@ -903,7 +919,7 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
+ 
++	pr_info("Detected ID %x for %x\n", phy_id, phydev->mdio.addr);
++
+ 	/* With PHY ID not the generic AS21xxx one assume
  	 * the firmware just loaded
  	 */
  	if (phy_id != PHY_ID_AS21XXX)
 -		return phy_id == phydrv->phy_id;
 +		return genphy_match_phy_device(phydev, (struct phy_driver *)phydrv);
++
++	pr_info("Loading Firmware...\n");
  
  	/* Allocate temp priv and load the firmware */
  	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+@@ -939,6 +964,7 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
+ 	 * This relies on the driver probe order where the first PHY driver
+ 	 * probed is the generic one.
+ 	 */
++	pr_info("Returning %d for device %x\n", ret, phydev->mdio.addr);
+ 	return ret;
+ }
+ 
 -- 
 2.48.1
 
