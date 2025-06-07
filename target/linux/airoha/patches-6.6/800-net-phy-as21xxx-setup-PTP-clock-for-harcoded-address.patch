@@ -1,30 +1,38 @@
-From 4c46ea31f9c86930cf44489f5d415311779d7a51 Mon Sep 17 00:00:00 2001
+From 1bd4e70ccf8e77b48b3fcc7d2119cd042fa8c118 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 30 May 2025 11:20:25 +0200
 Subject: [PATCH] net: phy: as21xxx: setup PTP clock for harcoded address
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- drivers/net/phy/as21xxx.c | 19 ++++++++++++++++---
- 1 file changed, 16 insertions(+), 3 deletions(-)
+ drivers/net/phy/as21xxx.c | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/net/phy/as21xxx.c b/drivers/net/phy/as21xxx.c
-index 92697f43087d..d4d855647b6d 100644
+index 92697f43087d..21e790d2d55e 100644
 --- a/drivers/net/phy/as21xxx.c
 +++ b/drivers/net/phy/as21xxx.c
-@@ -876,6 +876,11 @@ static int as21xxx_led_polarity_set(struct phy_device *phydev, int index,
- 			      mask, val);
- }
+@@ -294,6 +294,11 @@ static struct as21xxx_led_pattern_info as21xxx_led_supported_pattern[] = {
+ 	}
+ };
  
 +static void as21xxx_mdio_patch(struct phy_device *phydev)
 +{
-+	mdiobus_c45_write(phydev->mdio.bus, 0x30, 0x1, 0x1, 1);
++	mdiobus_write(phydev->mdio.bus, 0x30, 0x1, 0x1);
 +}
 +
- static int as21xxx_match_phy_device(struct phy_device *phydev,
- 				    const struct phy_driver *phydrv)
+ static int aeon_firmware_boot(struct phy_device *phydev, const u8 *data,
+ 			      size_t size)
  {
-@@ -884,9 +889,17 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
+@@ -318,6 +323,7 @@ static int aeon_firmware_boot(struct phy_device *phydev, const u8 *data,
+ 
+ 	val = phy_read_mmd(phydev, MDIO_MMD_VEND1,
+ 			   VEND1_GLB_REG_MDIO_INDIRECT_STATUS);
++	as21xxx_mdio_patch(phydev);
+ 	if (val > 1) {
+ 		phydev_err(phydev, "wrong origin mdio_indirect_status: %x\n", val);
+ 		return -EINVAL;
+@@ -884,17 +890,27 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
  	u32 phy_id;
  	int ret;
  
@@ -44,7 +52,17 @@ index 92697f43087d..d4d855647b6d 100644
  
  	/* Read PHY ID to handle firmware just loaded */
  	ret = phy_read_mmd(phydev, MDIO_MMD_PCS, MII_PHYSID1);
-@@ -903,7 +916,7 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
++	as21xxx_mdio_patch(phydev);
+ 	if (ret < 0)
+ 		return ret;
+ 	phy_id = ret << 16;
+ 
+ 	ret = phy_read_mmd(phydev, MDIO_MMD_PCS, MII_PHYSID2);
++	as21xxx_mdio_patch(phydev);
+ 	if (ret < 0)
+ 		return ret;
+ 	phy_id |= ret;
+@@ -903,7 +919,7 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
  	 * the firmware just loaded
  	 */
  	if (phy_id != PHY_ID_AS21XXX)
