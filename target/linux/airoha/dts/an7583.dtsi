@@ -353,7 +353,7 @@
 			};
 		};
 
-		syscon@1fbe3400 {
+		pbus_csr: syscon@1fbe3400 {
 			compatible = "airoha,en7581-pbus-csr", "syscon";
 			reg = <0x0 0x1fbe3400 0x0 0xff>;
 		};
@@ -534,20 +534,21 @@
 		};
 
 		pciephy: phy@1fa5a000 {
-			compatible = "airoha,en7581-pcie-phy";
-			reg = <0x0 0x1fa5a000 0x0 0xfff>,
-			      <0x0 0x1fa5b000 0x0 0xfff>,
-			      <0x0 0x1fa5c000 0x0 0xfff>,
-			      <0x0 0x1fc10044 0x0 0x4>,
+			compatible = "airoha,an7583-pcie-phy";
+			reg = <0x0 0x1fc7f000 0x0 0xfff>,
+			      <0x0 0x1fc7e000 0x0 0xfff>,
+			      <0x0 0x1fa5f000 0x0 0xff>,
+			      <0x0 0x1fa5e000 0x0 0x8ff>,
+			      <0x0 0x1fa5a000 0x0 0x3ff>,
 			      <0x0 0x1fc30044 0x0 0x4>,
-			      <0x0 0x1fc15030 0x0 0x104>;
-			reg-names = "csr-2l", "pma0", "pma1",
-				    "p0-xr-dtime", "p1-xr-dtime",
-				    "rx-aeq";
+			      <0x0 0x1fc35030 0x0 0x4>;
+			reg-names = "g3-ana", "g3-pma",
+				    "qp-ana", "qp-pma", "qp-dig",
+				    "xr-dtime", "rx-aeq";
 			#phy-cells = <0>;
 		};
 
-		pcie0: pcie@1fc00000 {
+		pcie0: pcie@1fc20000 {
 			compatible = "airoha,an7583-pcie";
 			device_type = "pci";
 			linux,pci-domain = <0>;
@@ -569,6 +570,8 @@
 				 <&scuclk AN7583_PCIE1_RST>;
 			reset-names = "phy-lane0", "phy-lane1";
 
+			mediatek,pbus-csr = <&pbus_csr 0x0 0x4>;
+
 			interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
 			bus-range = <0x00 0xff>;
 			#interrupt-cells = <1>;
@@ -587,7 +590,7 @@
 			};
 		};
 
-		pcie1: pcie@1fc20000 {
+		pcie1: pcie@1fa92000 {
 			compatible = "airoha,an7583-pcie";
 			device_type = "pci";
 			linux,pci-domain = <1>;
@@ -608,6 +611,8 @@
 			resets = <&scuclk AN7583_PCIE0_RST>,
 				 <&scuclk AN7583_PCIE1_RST>;
 			reset-names = "phy-lane0", "phy-lane1";
+
+			mediatek,pbus-csr = <&pbus_csr 0x8 0xc>;
 
 			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
 			bus-range = <0x00 0xff>;
