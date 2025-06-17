@@ -1,26 +1,69 @@
-From ed9851a43e998a8d1317a5a5223d6cd3087a88e3 Mon Sep 17 00:00:00 2001
+From 12838dd20851a6eae67061c5f195f31981a4d8c1 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
-Date: Sat, 8 Feb 2025 00:41:21 +0100
-Subject: [PATCH 3/4] dt-bindings: reset: add binding for Airoha AN7583 SoC
- reset
+Date: Wed, 28 May 2025 02:39:35 +0200
+Subject: [PATCH 09/10] dt-bindings: clock: airoha: Document support for AN7583
+ clock
 
-Add binding for Airoha AN7583 SoC Resets. These are very similar to
-EN7581 but lack some specific reset line hence the order is different
-and a dedicated binding is needed.
+Document support for Airoha AN7583 clock. This is based on the EN7523
+clock schema with the new requirement of the "airoha,chip-scu"
+(previously optional for EN7581).
+
+Add additional binding for additional clock and reset lines.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
+ .../bindings/clock/airoha,en7523-scu.yaml     |  9 +++
+ include/dt-bindings/clock/en7523-clk.h        |  3 +
  .../dt-bindings/reset/airoha,an7583-reset.h   | 61 +++++++++++++++++++
- 1 file changed, 61 insertions(+)
+ 3 files changed, 73 insertions(+)
  create mode 100644 include/dt-bindings/reset/airoha,an7583-reset.h
 
+# diff --git a/Documentation/devicetree/bindings/clock/airoha,en7523-scu.yaml b/Documentation/devicetree/bindings/clock/airoha,en7523-scu.yaml
+# index bce77a14c938..be9759b86fdc 100644
+# --- a/Documentation/devicetree/bindings/clock/airoha,en7523-scu.yaml
+# +++ b/Documentation/devicetree/bindings/clock/airoha,en7523-scu.yaml
+# @@ -32,6 +32,7 @@ properties:
+#        - enum:
+#            - airoha,en7523-scu
+#            - airoha,en7581-scu
+# +          - airoha,an7583-scu
+ 
+#    reg:
+#      items:
+# @@ -82,6 +83,14 @@ allOf:
+#          reg:
+#            maxItems: 1
+ 
+# +  - if:
+# +      properties:
+# +        compatible:
+# +          const: airoha,an7583-scu
+# +    then:
+# +      required:
+# +        - airoha,chip-scu
+# +
+#  additionalProperties: false
+ 
+#  examples:
+diff --git a/include/dt-bindings/clock/en7523-clk.h b/include/dt-bindings/clock/en7523-clk.h
+index edfa64045f52..0fbbcb7b1b25 100644
+--- a/include/dt-bindings/clock/en7523-clk.h
++++ b/include/dt-bindings/clock/en7523-clk.h
+@@ -14,4 +14,7 @@
+ 
+ #define EN7581_CLK_EMMC		8
+ 
++#define AN7583_CLK_MDIO0	9
++#define AN7583_CLK_MDIO1	10
++
+ #endif /* _DT_BINDINGS_CLOCK_AIROHA_EN7523_H_ */
 diff --git a/include/dt-bindings/reset/airoha,an7583-reset.h b/include/dt-bindings/reset/airoha,an7583-reset.h
 new file mode 100644
-index 000000000000..a7108b06ae4b
+index 000000000000..96cfe11d2943
 --- /dev/null
 +++ b/include/dt-bindings/reset/airoha,an7583-reset.h
 @@ -0,0 +1,61 @@
-+// SPDX-License-Identifier: GPL-2.0-only
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
 +/*
 + * Copyright (c) 2024 AIROHA Inc
 + * Author: Christian Marangi <ansuelsmth@gmail.com>
@@ -52,8 +95,8 @@ index 000000000000..a7108b06ae4b
 +#define AN7583_EMMC_RST			19
 +#define AN7583_SOE_RST			20
 +#define AN7583_XFP_MAC_RST		21
-+#define AN7583_MDIO0    		22
-+#define AN7583_MDIO1            	23
++#define AN7583_MDIO0                    22
++#define AN7583_MDIO1                    23
 +/* RST_CTRL1 */
 +#define AN7583_PCM1_ZSI_ISI_RST		24
 +#define AN7583_FE_PDMA_RST		25

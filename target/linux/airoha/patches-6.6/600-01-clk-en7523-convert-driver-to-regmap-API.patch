@@ -1,7 +1,7 @@
-From 28d10b1fb596ab3168f0c81c8863fef2a89d6b4a Mon Sep 17 00:00:00 2001
+From 8d5a00b3b83f76d255bcffc91d5263f72b27547a Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 7 Feb 2025 23:51:23 +0100
-Subject: [PATCH 1/4] clk: en7523: convert driver to regmap API
+Subject: [PATCH 01/10] clk: en7523: convert driver to regmap API
 
 Convert driver to regmap API, in preparation for support of Airoha
 AN7523 as the SCU will be an MFD and the regmap will be provided in the
@@ -321,9 +321,9 @@ index 15bbdeb60b8e..314e7450313f 100644
 +	struct regmap *map, *clk_map;
  	void __iomem *base;
 -	u32 val;
- 	int ret;
  
  	map = syscon_regmap_lookup_by_compatible("airoha,en7581-chip-scu");
+ 	if (IS_ERR(map))
 @@ -690,15 +702,18 @@ static int en7581_clk_hw_init(struct platform_device *pdev,
  	if (IS_ERR(base))
  		return PTR_ERR(base);
@@ -345,11 +345,11 @@ index 15bbdeb60b8e..314e7450313f 100644
 +	regmap_update_bits(clk_map, REG_NP_SCU_PCIC, REG_PCIE_CTRL,
 +			   FIELD_PREP(REG_PCIE_CTRL, 3));
  
--	ret = en7581_reset_register(&pdev->dev, base);
-+	ret = en7581_reset_register(&pdev->dev, clk_map);
- 	if (ret)
- 		return ret;
+-	return en7581_reset_register(&pdev->dev, base);
++	return en7581_reset_register(&pdev->dev, clk_map);
+ }
  
+ static int en7523_clk_probe(struct platform_device *pdev)
 -- 
 2.48.1
 

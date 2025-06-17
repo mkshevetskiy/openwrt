@@ -358,30 +358,32 @@
 			reg = <0x0 0x1fbe3400 0x0 0xff>;
 		};
 
-		system-controller@1fa20000 {
-			compatible = "syscon", "simple-mfd";
+		scuclk: system-controller@1fa20000 {
+			compatible = "airoha,an7583-scu", "syscon";
 			reg = <0x0 0x1fb00000 0x0 0x970>;
 
-			scuclk: scuclk {
-				compatible = "airoha,an7583-scu";
-				#clock-cells = <1>;
-				#reset-cells = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+
+			airoha,chip-scu = <&chip_scu>;
+
+			mdio_0: mdio-bus@c8 {
+				compatible = "airoha,an7583-mdio";
+				reg = <0xc8>;
+
+				clocks = <&scuclk AN7583_CLK_MDIO0>;
+				resets = <&scuclk AN7583_MDIO0>;
 			};
 
-			mdio {
+			mdio_1: mdio-bus@cc {
 				compatible = "airoha,an7583-mdio";
-				#address-cells = <1>;
-				#size-cells = <0>;
+				reg = <0xcc>;
 
-				mdio_0: bus@0 {
-					reg = <0>;
-					resets = <&scuclk AN7583_MDIO0>;
-				};
-
-				mdio_1: bus@1 {
-					reg = <1>;
-					resets = <&scuclk AN7583_MDIO1>;
-				};
+				clocks = <&scuclk AN7583_CLK_MDIO1>;
+				resets = <&scuclk AN7583_MDIO1>;
 			};
 		};
 
