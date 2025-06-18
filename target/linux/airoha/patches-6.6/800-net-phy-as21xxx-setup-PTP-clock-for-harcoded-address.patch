@@ -81,21 +81,12 @@ index 92697f43087d..62e3fa7d4b3e 100644
  	 * the firmware just loaded
  	 */
  	if (phy_id != PHY_ID_AS21XXX)
--		return phy_id == phydrv->phy_id;
-+		return genphy_match_phy_device(phydev, (struct phy_driver *)phydrv);
+ 		return phy_id == phydrv->phy_id;
 +
 +	pr_info("Loading Firmware...\n");
  
  	/* Allocate temp priv and load the firmware */
  	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
-@@ -939,6 +964,7 @@ static int as21xxx_match_phy_device(struct phy_device *phydev,
- 	 * This relies on the driver probe order where the first PHY driver
- 	 * probed is the generic one.
- 	 */
-+	pr_info("Returning %d for device %x\n", ret, phydev->mdio.addr);
- 	return ret;
- }
- 
 -- 
 2.48.1
 
