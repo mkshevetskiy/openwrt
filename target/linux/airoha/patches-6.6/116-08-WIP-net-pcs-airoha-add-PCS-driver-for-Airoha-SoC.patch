@@ -55,7 +55,7 @@ new file mode 100644
 index 000000000000..e90a1f1f63e1
 --- /dev/null
 +++ b/drivers/net/pcs/pcs-airoha.c
-@@ -0,0 +1,2884 @@
+@@ -0,0 +1,2913 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -923,8 +923,8 @@ index 000000000000..e90a1f1f63e1
 +
 +static void airoha_pcs_init_hsgmii(struct airoha_pcs_priv *priv)
 +{
-+	regmap_set_bits(priv->multi_sgmii, AIROHA_PCS_MULTI_SGMII_MSG_RX_CTRL_0,
-+			AIROHA_PCS_HSGMII_XFI_SEL);
++	regmap_clear_bits(priv->multi_sgmii, AIROHA_PCS_MULTI_SGMII_MSG_RX_CTRL_0,
++			  AIROHA_PCS_HSGMII_XFI_SEL);
 +
 +	regmap_set_bits(priv->hsgmii_pcs, AIROHA_PCS_HSGMII_PCS_CTROL_1,
 +			AIROHA_PCS_TBI_10B_MODE);
@@ -2355,6 +2355,25 @@ index 000000000000..e90a1f1f63e1
 +	phylink_mii_c22_pcs_decode_state(state, bmsr, lpa);
 +}
 +
++static void airoha_pcs_get_state_hsgmii(struct airoha_pcs_priv *priv,
++					struct phylink_link_state *state)
++{
++	u32 bmsr;
++
++	regmap_read(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_1,
++		    &bmsr);
++
++	bmsr = (AIROHA_PCS_HSGMII_AN_SGMII_AN_COMPLETE |
++		AIROHA_PCS_HSGMII_AN_SGMII_REMOTE_FAULT |
++		AIROHA_PCS_HSGMII_AN_SGMII_AN_ABILITY |
++		AIROHA_PCS_HSGMII_AN_SGMII_LINK_STATUS) & bmsr;
++
++	state->link = !!(bmsr & BMSR_LSTATUS);
++	state->an_complete = !!(bmsr & BMSR_ANEGCOMPLETE);
++	state->speed = SPEED_2500;
++	state->duplex = DUPLEX_FULL;
++}
++
 +static void airoha_pcs_get_state_usxgmii(struct airoha_pcs_priv *priv,
 +					 struct phylink_link_state *state)
 +{
@@ -2383,8 +2402,10 @@ index 000000000000..e90a1f1f63e1
 +	switch (state->interface) {
 +	case PHY_INTERFACE_MODE_SGMII:
 +	case PHY_INTERFACE_MODE_1000BASEX:
-+	case PHY_INTERFACE_MODE_2500BASEX:
 +		airoha_pcs_get_state_sgmii(priv, state);
++		break;
++	case PHY_INTERFACE_MODE_2500BASEX:
++		airoha_pcs_get_state_hsgmii(priv, state);
 +		break;
 +	case PHY_INTERFACE_MODE_USXGMII:
 +	case PHY_INTERFACE_MODE_10GBASER:
@@ -2478,8 +2499,7 @@ index 000000000000..e90a1f1f63e1
 +
 +	/* Setup AN Link Timer */
 +	if (interface == PHY_INTERFACE_MODE_SGMII ||
-+	    interface == PHY_INTERFACE_MODE_1000BASEX ||
-+	    interface == PHY_INTERFACE_MODE_2500BASEX) {
++	    interface == PHY_INTERFACE_MODE_1000BASEX) {
 +		u32 an_timer;
 +
 +		an_timer = phylink_get_link_timer_ns(interface);
@@ -2497,36 +2517,50 @@ index 000000000000..e90a1f1f63e1
 +	}
 +
 +	/* Setup SGMII AN and advertisement in DEV_ABILITY */
-+	if (interface == PHY_INTERFACE_MODE_SGMII ||
-+	    interface == PHY_INTERFACE_MODE_2500BASEX) {
-+		    if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
++	if (interface == PHY_INTERFACE_MODE_SGMII) {
++	   	if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
 +			int advertise = phylink_mii_c22_pcs_encode_advertisement(interface,
 +										 advertising);
 +			if (advertise < 0)
 +				return advertise;
 +
-+			regmap_set_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_0,
-+					AIROHA_PCS_HSGMII_AN_SGMII_RA_ENABLE);
-+
 +			regmap_update_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_4,
 +					   AIROHA_PCS_HSGMII_AN_SGMII_DEV_ABILITY,
 +					   FIELD_PREP(AIROHA_PCS_HSGMII_AN_SGMII_DEV_ABILITY,
 +						      advertise));
-+		} else {
++
++			regmap_set_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_0,
++					AIROHA_PCS_HSGMII_AN_SGMII_RA_ENABLE);
++	    	} else {
 +			regmap_clear_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_0,
 +					  AIROHA_PCS_HSGMII_AN_SGMII_RA_ENABLE);
 +		}
 +	}
 +
++	if (interface == PHY_INTERFACE_MODE_2500BASEX) {
++		regmap_clear_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_0,
++				  AIROHA_PCS_HSGMII_AN_SGMII_RA_ENABLE);
++
++		regmap_set_bits(priv->hsgmii_pcs, AIROHA_PCS_HSGMII_PCS_CTROL_6,
++				AIROHA_PCS_HSGMII_PCS_TX_ENABLE);
++	}
++
 +	if (interface == PHY_INTERFACE_MODE_SGMII ||
 +	    interface == PHY_INTERFACE_MODE_1000BASEX) {
-+		u32 if_mode = AIROHA_PCS_HSGMII_AN_SGMII_EN |
-+			      AIROHA_PCS_HSGMII_AN_SIDEBAND_EN;
++		u32 if_mode = AIROHA_PCS_HSGMII_AN_SIDEBAND_EN;
 +
-+		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
++		/* Toggle SGMII or 1000base-x mode */
++		if (interface == PHY_INTERFACE_MODE_SGMII)
++			if_mode |= AIROHA_PCS_HSGMII_AN_SGMII_EN;
++
++		if (neg_mode & PHYLINK_PCS_NEG_INBAND)
 +			regmap_set_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_13,
 +					AIROHA_PCS_HSGMII_AN_SGMII_REMOTE_FAULT_DIS);
++		else
++			regmap_clear_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_13,
++					  AIROHA_PCS_HSGMII_AN_SGMII_REMOTE_FAULT_DIS);
 +
++		if (neg_mode == PHYLINK_PCS_NEG_INBAND_ENABLED) {
 +			/* Clear force speed bits and MAC mode */
 +			regmap_clear_bits(priv->hsgmii_pcs, AIROHA_PCS_HSGMII_PCS_CTROL_6,
 +					  AIROHA_PCS_HSGMII_PCS_SGMII_SPD_FORCE_10 |
@@ -2536,23 +2570,18 @@ index 000000000000..e90a1f1f63e1
 +					  AIROHA_PCS_HSGMII_PCS_FORCE_RATEADAPT_VAL |
 +					  AIROHA_PCS_HSGMII_PCS_FORCE_RATEADAPT);
 +		} else {
++			/* Enable compatibility with MAC PCS Layer */
 +			if_mode |= AIROHA_PCS_HSGMII_AN_SGMII_COMPAT_EN;
 +
-+			regmap_clear_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_13,
-+					  AIROHA_PCS_HSGMII_AN_SGMII_REMOTE_FAULT_DIS);
-+
 +			/* AN off force rate adaption, speed is set later in Link Up */
-+			regmap_update_bits(priv->hsgmii_pcs, AIROHA_PCS_HSGMII_PCS_CTROL_6,
-+					   AIROHA_PCS_HSGMII_PCS_MAC_MODE |
-+					   AIROHA_PCS_HSGMII_PCS_FORCE_RATEADAPT,
-+					   AIROHA_PCS_HSGMII_PCS_FORCE_RATEADAPT);
++			regmap_set_bits(priv->hsgmii_pcs, AIROHA_PCS_HSGMII_PCS_CTROL_6,
++					AIROHA_PCS_HSGMII_PCS_MAC_MODE |
++					AIROHA_PCS_HSGMII_PCS_FORCE_RATEADAPT);
 +		}
 +
 +		regmap_update_bits(priv->hsgmii_an, AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_13,
 +				   AIROHA_PCS_HSGMII_AN_SGMII_IF_MODE_5_0, if_mode);
 +
-+		/* FIXME: Airoha apply a different configuration here */
-+		/* They force rate adaption */
 +		regmap_set_bits(priv->hsgmii_pcs, AIROHA_PCS_HSGMII_PCS_CTROL_6,
 +				AIROHA_PCS_HSGMII_PCS_TX_ENABLE |
 +				AIROHA_PCS_HSGMII_PCS_MODE2_EN);
