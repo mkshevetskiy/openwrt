@@ -330,11 +330,12 @@
 
 &mdio {
 	as21xx_0: ethernet-phy@1c {
+		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <0x1c>;
 
 		firmware-name = "as21x1x_fw.bin";
 
-		reset-deassert-us = <100000>;
+		reset-deassert-us = <350000>;
 		reset-assert-us = <200000>;
 		reset-gpios = <&en7581_pinctrl 30 GPIO_ACTIVE_LOW>;
 
@@ -361,11 +362,12 @@
 	};
 
 	as21xx_1: ethernet-phy@1d {
+		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <0x1d>;
 
 		firmware-name = "as21x1x_fw.bin";
 
-		reset-deassert-us = <100000>;
+		reset-deassert-us = <350000>;
 		reset-assert-us = <200000>;
 		reset-gpios = <&en7581_pinctrl 31 GPIO_ACTIVE_LOW>;
 
