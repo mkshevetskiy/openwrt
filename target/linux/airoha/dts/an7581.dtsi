@@ -455,6 +455,8 @@
 			resets = <&scuclk EN7581_XPON_MAC_RST>,
 				 <&scuclk EN7581_XPON_PHY_RST>;
 			reset-names = "mac", "phy";
+
+			airoha,scu = <&scuclk>;
 		};
 
 		eth_pcs: pcs@1fa09000 {
@@ -474,6 +476,8 @@
 			resets = <&scuclk EN7581_XSI_MAC_RST>,
 				 <&scuclk EN7581_XSI_PHY_RST>;
 			reset-names = "mac", "phy";
+
+			airoha,scu = <&scuclk>;
 		};
 
 		chip_scu: syscon@1fa20000 {
