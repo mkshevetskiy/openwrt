@@ -30,6 +30,15 @@
 };
 
 &an7583_pinctrl {
+	gpio-ranges = <&an7583_pinctrl 0 2 53>;
+
+	mdio0_pins: mdio0-pins {
+		conf {
+			pins = "mdio_0";
+			output-high;
+		};
+	};
+
 	pcie0_rst_pins: pcie0-rst-pins {
 		conf {
 			pins = "pcie_reset0";
@@ -41,6 +50,13 @@
 		conf {
 			pins = "pcie_reset1";
 			drive-open-drain = <1>;
+		};
+	};
+
+	gswp1_led0_pins: gswp1-led0-pins {
+		mux {
+			function = "phy1_led0";
+			pins = "gpio1";
 		};
 	};
 };
@@ -68,18 +84,6 @@
 	};
 };
 
-&pcie0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pcie0_rst_pins>;
-	status = "okay";
-};
-
-&pcie1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pcie1_rst_pins>;
-	status = "okay";
-};
-
 &i2c0 {
 	status = "okay";
 };
@@ -94,4 +98,83 @@
 
 &switch {
 	status = "okay";
+};
+
+&gsw_phy1 {
+	pinctrl-names = "gbe-led";
+	pinctrl-0 = <&gswp1_led0_pins>;
+	status = "okay";
+};
+
+&gsw_phy1_led0 {
+	status = "okay";
+	active-low;
+};
+
+&gsw_port2 {
+	status = "disabled";
+};
+
+&gsw_port3 {
+	status = "disabled";
+};
+
+&gsw_port4 {
+	status = "disabled";
+};
+
+&gsw_phy2 {
+	status = "disabled";
+};
+
+&gsw_phy3 {
+	status = "disabled";
+};
+
+&gsw_phy4 {
+	status = "disabled";
+};
+
+&mdio_0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mdio0_pins>;
+
+	as21xx_1: ethernet-phy@1f {
+		reg = <0x1f>;
+		compatible = "ethernet-phy-ieee802.3-c45";
+
+		firmware-name = "as21x1x_fw.bin";
+
+		reset-deassert-us = <350000>;
+		reset-assert-us = <200000>;
+		reset-gpios = <&an7583_pinctrl 35 GPIO_ACTIVE_LOW>;
+
+		leds {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			led@0 {
+				reg = <0>;
+				color = <LED_COLOR_ID_GREEN>;
+				function = LED_FUNCTION_LAN;
+				function-enumerator = <0>;
+				default-state = "keep";
+			};
+
+			led@1 {
+				reg = <1>;
+				color = <LED_COLOR_ID_GREEN>;
+				function = LED_FUNCTION_LAN;
+				function-enumerator = <1>;
+				default-state = "keep";
+			};
+		};
+	};
+};
+
+&gdm3 {
+	status = "okay";
+
+	phy-handle = <&as21xx_1>;
+	phy-mode = "usxgmii";
 };
