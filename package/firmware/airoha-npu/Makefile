@@ -9,11 +9,19 @@ include $(INCLUDE_DIR)/package.mk
 RSTRIP:=:
 STRIP:=:
 
-define Package/airoha-npu-firmware-en7581
-$(Package/ath11k-firmware-default)
+define Package/airoha-npu-firmware-default
   SECTION:=firmware
   CATEGORY:=Firmware
+endef
+
+define Package/airoha-npu-firmware-en7581
+  $(Package/airoha-npu-firmware-default)
   TITLE:=EN7581 airoha firmware
+endef
+
+define Package/airoha-npu-firmware-an7583
+  $(Package/airoha-npu-firmware-default)
+  TITLE:=AN7583 airoha firmware
 endef
 
 define Build/Compile
@@ -27,4 +35,12 @@ define Package/airoha-npu-firmware-en7581/install
 		$(1)/lib/firmware/airoha/
 endef
 
+define Package/airoha-npu-firmware-an7583/install
+	$(INSTALL_DIR) $(1)/lib/firmware/airoha
+	$(INSTALL_DATA) \
+		./files/an7583_npu_data.bin ./files/an7583_npu_rv32.bin \
+		$(1)/lib/firmware/airoha/
+endef
+
 $(eval $(call BuildPackage,airoha-npu-firmware-en7581))
+$(eval $(call BuildPackage,airoha-npu-firmware-an7583))
