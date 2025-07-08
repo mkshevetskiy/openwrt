@@ -324,11 +324,11 @@ index 000000000000..e16d3962b9df
 +					  u32 duty_ticks, u32 period_ticks)
 +{
 +	u32 mask, shift, val;
-+	u64 offset;
++	u32 offset;
 +	int ret;
 +
-+	offset = bucket;
-+	shift = do_div(offset, AIROHA_PWM_BUCKET_PER_CYCLE_CFG);
++	offset = bucket / AIROHA_PWM_BUCKET_PER_CYCLE_CFG;
++	shift = bucket % AIROHA_PWM_BUCKET_PER_CYCLE_CFG;
 +	shift = AIROHA_PWM_REG_CYCLE_CFG_SHIFT(shift);
 +
 +	/* Configure frequency divisor */
@@ -339,8 +339,8 @@ index 000000000000..e16d3962b9df
 +	if (ret)
 +		return ret;
 +
-+	offset = bucket;
-+	shift = do_div(offset, AIROHA_PWM_BUCKET_PER_FLASH_PROD);
++	offset = bucket / AIROHA_PWM_BUCKET_PER_FLASH_PROD;
++	shift = bucket % AIROHA_PWM_BUCKET_PER_FLASH_PROD;
 +	shift = AIROHA_PWM_REG_GPIO_FLASH_PRD_SHIFT(shift);
 +
 +	/* Configure duty cycle */
@@ -489,7 +489,7 @@ index 000000000000..e16d3962b9df
 +}
 +
 +static int airoha_pwm_config(struct airoha_pwm *pc, struct pwm_device *pwm,
-+			     u32 duty_ticks, u32 period_ticks)
++			     u32 period_ticks, u32 duty_ticks)
 +{
 +	unsigned int hwpwm = pwm->hwpwm;
 +	int bucket, ret;
