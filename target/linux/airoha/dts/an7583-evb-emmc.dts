@@ -82,14 +82,9 @@
 &an7583_pinctrl {
 	gpio-ranges = <&an7583_pinctrl 0 2 53>;
 
-	mdio_pins: mdio-pins {
-		mux {
-			function = "mdio";
-			groups = "mdio";
-		};
-
+	mdio0_pins: mdio0-pins {
 		conf {
-			pins = "i2c1_sda";
+			pins = "mdio_0";
 			output-high;
 		};
 	};
@@ -257,8 +252,6 @@
 };
 
 &switch {
-	pinctrl-names = "default";
-	pinctrl-0 = <&mdio_pins>;
 	status = "okay";
 };
 
