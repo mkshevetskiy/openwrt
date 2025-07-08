@@ -11,7 +11,7 @@
 
 / {
 	model = "Airoha AN7581 Evaluation Board";
-	compatible = "airoha,an7581-evb", "airoha,an7581", "airoha,en7581";
+	compatible = "airoha,an7581-evb-10g", "airoha,an7581-evb", "airoha,an7581", "airoha,en7581";
 
 	aliases {
 		serial0 = &uart1;
@@ -392,6 +392,13 @@
 			};
 		};
 	};
+};
+
+&gdm2 {
+	status = "okay";
+
+	phy-handle = <&as21xx_0>;
+	phy-mode = "usxgmii";
 };
 
 &gdm4 {
