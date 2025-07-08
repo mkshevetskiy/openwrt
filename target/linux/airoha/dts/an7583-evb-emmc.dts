@@ -230,6 +230,15 @@
 	status = "okay";
 };
 
+&mdio_0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mdio0_pins>;
+
+	en8811: ethernet-phy@f {
+		reg = <0xf>;
+	};
+};
+
 &eth {
 	status = "okay";
 	nvmem-cells = <&mac_factory_2c0000>;
@@ -238,6 +247,13 @@
 
 &gdm1 {
 	status = "okay";
+};
+
+&gdm3 {
+	status = "okay";
+
+	phy-handle = <&en8811>;
+	phy-mode = "2500base-x";
 };
 
 &switch {
