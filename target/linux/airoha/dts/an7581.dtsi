@@ -947,6 +947,8 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 
+				clocks = <&scuclk EN7581_CLK_SWITCH_MDC>;
+
 				gsw_phy1: ethernet-phy@1 {
 					compatible = "ethernet-phy-ieee802.3-c22";
 					reg = <9>;
