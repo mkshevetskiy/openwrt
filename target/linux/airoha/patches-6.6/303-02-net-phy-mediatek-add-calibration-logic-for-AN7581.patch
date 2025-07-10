@@ -1,0 +1,1062 @@
+From fa110246efdddd856986068eca8372263e6c4c38 Mon Sep 17 00:00:00 2001
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Thu, 10 Jul 2025 22:23:49 +0200
+Subject: [PATCH] net: phy: mediatek: add calibration logic for AN7581
+
+Airoha AN7581 require dedicated calibration and specific tuneup to make
+the Ethernet port work on specific HW PCB layout.
+
+The calibration process is similar to Mediatek PHY but Airoha PHY use
+Software calibration process instead of making use of EFUSE.
+
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+---
+ drivers/net/phy/mediatek/mtk-ge-soc.c | 901 +++++++++++++++++++++++++-
+ 1 file changed, 888 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.c b/drivers/net/phy/mediatek/mtk-ge-soc.c
+index cd09fbf92ef2..555607a0df32 100644
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
+@@ -21,6 +21,7 @@
+ 
+ #define MTK_EXT_PAGE_ACCESS			0x1f
+ #define MTK_PHY_PAGE_STANDARD			0x0000
++#define MTK_PHY_PAGE_EXTENDED_1			0x0001
+ #define MTK_PHY_PAGE_EXTENDED_3			0x0003
+ 
+ #define MTK_PHY_LPI_REG_14			0x14
+@@ -186,6 +187,7 @@
+ #define MTK_PHY_RG_ANA_CAL_RG0			0xdb
+ #define   MTK_PHY_RG_CAL_CKINV			BIT(12)
+ #define   MTK_PHY_RG_ANA_CALEN			BIT(8)
++#define   MTK_PHY_RG_REXT_CALEN			BIT(4)
+ #define   MTK_PHY_RG_ZCALEN_A			BIT(0)
+ 
+ #define MTK_PHY_RG_ANA_CAL_RG1			0xdc
+@@ -196,6 +198,9 @@
+ 
+ #define MTK_PHY_RG_ANA_CAL_RG5			0xe0
+ #define   MTK_PHY_RG_REXT_TRIM_MASK		GENMASK(13, 8)
++#define   MTK_PHY_RG_REXT_ZCAL_CTRL_MASK	GENMASK(5, 0)
++
++#define MTK_PHY_RG_ANA_CAL_RG6			0xe1
+ 
+ #define MTK_PHY_RG_TX_FILTER			0xfe
+ 
+@@ -217,6 +222,14 @@
+ #define   MTK_PHY_CR_TX_AMP_OFFSET_C_MASK	GENMASK(13, 8)
+ #define   MTK_PHY_CR_TX_AMP_OFFSET_D_MASK	GENMASK(6, 0)
+ 
++#define MTK_PHY_RG_CR_TX_R50_OFFSET_A_B		0x174
++#define   MTK_PHY_CR_TX_R50_OFFSET_A_MASK	GENMASK(13, 8)
++#define   MTK_PHY_CR_TX_R50_OFFSET_B_MASK	GENMASK(6, 0)
++
++#define MTK_PHY_RG_CR_TX_R50_OFFSET_C_D		0x175
++#define   MTK_PHY_CR_TX_R50_OFFSET_C_MASK	GENMASK(13, 8)
++#define   MTK_PHY_CR_TX_R50_OFFSET_D_MASK	GENMASK(6, 0)
++
+ #define MTK_PHY_RG_AD_CAL_COMP			0x17a
+ #define   MTK_PHY_AD_CAL_COMP_OUT_MASK		GENMASK(8, 8)
+ 
+@@ -364,7 +377,8 @@ enum CAL_ITEM {
+ 	TX_OFFSET,
+ 	TX_AMP,
+ 	TX_R50,
+-	TX_VCM
++	TX_VCM,
++	RX_OFFSET,
+ };
+ 
+ enum CAL_MODE {
+@@ -377,20 +391,17 @@ struct mtk_socphy_shared {
+ 	struct mtk_socphy_priv	priv[4];
+ };
+ 
+-/* One calibration cycle consists of:
+- * 1.Set DA_CALIN_FLAG high to start calibration. Keep it high
+- *   until AD_CAL_COMP is ready to output calibration result.
+- * 2.Wait until DA_CAL_CLK is available.
+- * 3.Fetch AD_CAL_COMP_OUT.
+- */
+-static int cal_cycle(struct phy_device *phydev, int devad,
+-		     u32 regnum, u16 mask, u16 cal_val)
++struct airoha_socphy_shared {
++	struct phy_device *phydev_p0;
++	bool rext_sw_calib_done;
++	struct mtk_socphy_priv priv[4];
++};
++
++static int cal_cycle_wait(struct phy_device *phydev)
+ {
+ 	int reg_val;
+ 	int ret;
+ 
+-	phy_modify_mmd(phydev, devad, regnum,
+-		       mask, cal_val);
+ 	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
+ 			 MTK_PHY_DA_CALIN_FLAG);
+ 
+@@ -409,7 +420,43 @@ static int cal_cycle(struct phy_device *phydev, int devad,
+ 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
+ 	if (ret < 0)
+ 		return ret;
+-	ret = FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
++
++	return FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
++}
++
++static int an7581_cal_cycle(struct phy_device *phydev, int devad,
++		     u32 regnum, u16 mask, u16 cal_val)
++{
++	struct airoha_socphy_shared *shared;
++	struct phy_device *phydev_p0;
++	int ret;
++
++	shared = phydev->shared->priv;
++	phydev_p0 = shared->phydev_p0;
++
++	phy_modify_mmd(phydev, devad, regnum,
++		       mask, cal_val);
++
++	ret = cal_cycle_wait(phydev_p0);
++	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
++
++	return ret;
++}
++
++/* One calibration cycle consists of:
++ * 1.Set DA_CALIN_FLAG high to start calibration. Keep it high
++ *   until AD_CAL_COMP is ready to output calibration result.
++ * 2.Wait until DA_CAL_CLK is available.
++ * 3.Fetch AD_CAL_COMP_OUT.
++ */
++static int cal_cycle(struct phy_device *phydev, int devad,
++		     u32 regnum, u16 mask, u16 cal_val)
++{
++	int ret;
++	phy_modify_mmd(phydev, devad, regnum,
++		       mask, cal_val);
++
++	ret = cal_cycle_wait(phydev);
+ 	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
+ 
+ 	return ret;
+@@ -436,6 +483,76 @@ static int rext_cal_efuse(struct phy_device *phydev, u32 *buf)
+ 	return 0;
+ }
+ 
++static int rext_cal_sw(struct phy_device *phydev)
++{
++	int calibration_polarity;
++	u8 zcal_ctrl = 32;
++	int first_calib;
++	int ret;
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN |
++		      MTK_PHY_RG_REXT_CALEN);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6, 0);
++
++	phydev_dbg(phydev, "Start REXT SW cal.\n");
++	first_calib = cal_cycle(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
++				MTK_PHY_RG_REXT_ZCAL_CTRL_MASK, zcal_ctrl);
++
++	if (first_calib < 0) {
++		phydev_err(phydev, "REXT SW calibration failed.\n");
++		return -EINVAL;
++	}
++
++	/* If REXT calibration failed:
++	 * - increase dB until calibration succeed.
++	 * If REXT calibration succeeded:
++	 * - decrease dB until calibration fail to fine tune it.
++	 */
++	if (first_calib == 1)
++		calibration_polarity = -1;
++	else
++		calibration_polarity = 1;
++
++	while (zcal_ctrl > 0 &&
++	       zcal_ctrl < FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
++		zcal_ctrl += calibration_polarity;
++
++		ret = cal_cycle(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
++				MTK_PHY_RG_REXT_ZCAL_CTRL_MASK, zcal_ctrl);
++		/* Exit if we either failed or succeded compared to the
++		 * first calibration result. (aka we finished fine tuning or
++		 * we succeded with calibration)
++		 */
++		if (ret != first_calib)
++			break;
++	}
++
++	if (ret < 0) {
++		phydev_err(phydev, "REXT SW calibration failed.\n");
++		return -EINVAL;
++	}
++
++	if (zcal_ctrl == 0 ||
++	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
++		zcal_ctrl = 32;
++		phydev_err(phydev, "REXT SW calibration saturation. Defaulting to %x.\n",
++			   zcal_ctrl);
++	}
++
++	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
++		       MTK_PHY_RG_REXT_TRIM_MASK,
++		       FIELD_PREP(MTK_PHY_RG_REXT_TRIM_MASK, zcal_ctrl));
++	phy_modify_mmd(phydev, MDIO_MMD_VEND2, MTK_PHY_RG_BG_RASEL,
++		       MTK_PHY_RG_BG_RASEL_MASK,
++		       FIELD_PREP(MTK_PHY_RG_BG_RASEL_MASK, zcal_ctrl >> 3));
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++
++	return 0;
++}
++
+ static int tx_offset_fill_result(struct phy_device *phydev, u16 *buf)
+ {
+ 	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_CR_TX_AMP_OFFSET_A_B,
+@@ -464,6 +581,153 @@ static int tx_offset_cal_efuse(struct phy_device *phydev, u32 *buf)
+ 	return 0;
+ }
+ 
++static int tx_offset_cal_sw(struct phy_device *phydev, u8 txg_calen_x)
++{
++	struct airoha_socphy_shared *shared;
++	struct phy_device *phydev_p0;
++	int calibration_polarity;
++	u16 reg_dac1, reg_dac2;
++	int zcal_ctrl = 0;
++	int first_calib;
++	u16 reg, mask;
++	int ret;
++
++	shared = phydev->shared->priv;
++	phydev_p0 = shared->phydev_p0;
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1,
++		      MTK_PHY_RG_TXVOS_CALEN);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1,
++		      MTK_PHY_RG_TXVOS_CALEN);
++	/* 1e_96[15]:bypass_tx_offset_cal, Hw bypass, Fw cal */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x96,
++		      0x8000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e,
++		      0xf808);
++
++	switch (txg_calen_x) {
++	case PAIR_A:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(12));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG0,
++				 MTK_PHY_RG_ZCALEN_A);
++		reg_dac1 = 0x17d;
++		reg_dac2 = 0x181;
++		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_A_B;
++		mask = MTK_PHY_CR_TX_AMP_OFFSET_A_MASK;
++		break;
++	case PAIR_B:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(8));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_B);
++		reg_dac1 = 0x17e;
++		reg_dac2 = 0x182;
++		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_A_B;
++		mask = MTK_PHY_CR_TX_AMP_OFFSET_B_MASK;
++		break;
++	case PAIR_C:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(4));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_C);
++		reg_dac1 = 0x17f;
++		reg_dac2 = 0x183;
++		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_C_D;
++		mask = MTK_PHY_CR_TX_AMP_OFFSET_C_MASK;
++		break;
++	case PAIR_D:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(0));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_D);
++		reg_dac1 = 0x180;
++		reg_dac2 = 0x184;
++		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_C_D;
++		mask = MTK_PHY_CR_TX_AMP_OFFSET_D_MASK;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, reg_dac1,
++		      0x8000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, reg_dac2,
++		      0x8000);
++
++	phydev_dbg(phydev, "Start TX Offset SW cal.\n");
++
++	first_calib = an7581_cal_cycle(phydev, MDIO_MMD_VEND1, reg, mask,
++				       zcal_ctrl << __ffs(mask));
++
++	/* If TX Offset calibration failed:
++	 * - increase dB until calibration succeed.
++	 * If TX Offset calibration succeeded:
++	 * - decrease dB until calibration fail to fine tune it.
++	 */
++	if (first_calib == 1)
++		calibration_polarity = -1;
++	else
++		calibration_polarity = 1;
++
++	while (zcal_ctrl > -32 && zcal_ctrl < 32) {
++		u32 val;
++
++		zcal_ctrl += calibration_polarity;
++		if (zcal_ctrl >= 0)
++			val = zcal_ctrl;
++		else
++			/* BIT(5) signal negative number for TX Offset */
++			val = BIT(5) | abs(zcal_ctrl);
++
++		ret = an7581_cal_cycle(phydev, MDIO_MMD_VEND1, reg, mask,
++				       val << __ffs(mask));
++		/* Exit if we either failed or succeded compared to the
++		 * first calibration result. (aka we finished fine tuning or
++		 * we succeded with calibration)
++		 */
++		if (ret != first_calib)
++			break;
++	}
++
++	if (ret < 0) {
++		phydev_err(phydev, "TX Offset calibration failed.\n");
++		return -EINVAL;
++	}
++
++	if (zcal_ctrl == -32 ||
++	    zcal_ctrl == 32) {
++		zcal_ctrl = 0;
++		phydev_err(phydev, "TX Offset SW calibration saturation. Defaulting to %x.\n",
++			   zcal_ctrl);
++
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg, mask,
++			       zcal_ctrl << __ffs(mask));
++	}
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_A, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_B, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_C, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_D, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_A, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_B, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_C, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_D, 0);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, 0);
++
++	return 0;
++}
++
+ static int tx_amp_fill_result(struct phy_device *phydev, u16 *buf)
+ {
+ 	const int vals_9481[16] = { 10, 6, 6, 10,
+@@ -582,6 +846,197 @@ static int tx_amp_cal_efuse(struct phy_device *phydev, u32 *buf)
+ 	return 0;
+ }
+ 
++static int tx_amp_cal_sw(struct phy_device *phydev, u8 txg_calen_x)
++{
++	u16 mask_gbe, mask_tbt, mask_tst, mask_hbt;
++	u16 reg, reg_100, reg_dac1, reg_dac2;
++	struct airoha_socphy_shared *shared;
++	struct phy_device *phydev_p0;
++	int calibration_polarity;
++	u8 zcal_ctrl = 32;
++	int first_calib;
++	int ret;
++
++	shared = phydev->shared->priv;
++	phydev_p0 = shared->phydev_p0;
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1,
++		      MTK_PHY_RG_TXVOS_CALEN);
++
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1,
++		      MTK_PHY_RG_TXVOS_CALEN);
++
++	/* select 1V */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6, 0x10);
++
++	/* enable Tx VLD*/
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e,
++		      0xf808);
++
++	switch (txg_calen_x) {
++	case PAIR_A:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(12));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG0,
++				 MTK_PHY_RG_ZCALEN_A);
++		reg_dac1 = 0x17d;
++		reg_dac2 = 0x181;
++		reg = MTK_PHY_TXVLD_DA_RG;
++		mask_gbe = MTK_PHY_DA_TX_I2MPB_A_GBE_MASK;
++		mask_tbt = MTK_PHY_DA_TX_I2MPB_A_TBT_MASK;
++		reg_100 = MTK_PHY_TX_I2MPB_TEST_MODE_A2;
++		mask_hbt = MTK_PHY_DA_TX_I2MPB_A_HBT_MASK;
++		mask_tst = MTK_PHY_DA_TX_I2MPB_A_TST_MASK;
++		break;
++	case PAIR_B:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(8));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_B);
++		reg_dac1 = 0x17e;
++		reg_dac2 = 0x182;
++		reg = MTK_PHY_TX_I2MPB_TEST_MODE_B1;
++		mask_gbe = MTK_PHY_DA_TX_I2MPB_B_GBE_MASK;
++		mask_tbt = MTK_PHY_DA_TX_I2MPB_B_TBT_MASK;
++		reg_100 = MTK_PHY_TX_I2MPB_TEST_MODE_B2;
++		mask_hbt = MTK_PHY_DA_TX_I2MPB_B_HBT_MASK;
++		mask_tst = MTK_PHY_DA_TX_I2MPB_B_TST_MASK;
++		break;
++	case PAIR_C:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(4));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_C);
++		reg_dac1 = 0x17f;
++		reg_dac2 = 0x183;
++		reg = MTK_PHY_TX_I2MPB_TEST_MODE_C1;
++		mask_gbe = MTK_PHY_DA_TX_I2MPB_C_GBE_MASK;
++		mask_tbt = MTK_PHY_DA_TX_I2MPB_C_TBT_MASK;
++		reg_100 = MTK_PHY_TX_I2MPB_TEST_MODE_C2;
++		mask_hbt = MTK_PHY_DA_TX_I2MPB_C_HBT_MASK;
++		mask_tst = MTK_PHY_DA_TX_I2MPB_C_TST_MASK;
++		break;
++	case PAIR_D:
++		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(0));
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_D);
++		reg_dac1 = 0x180;
++		reg_dac2 = 0x184;
++		reg = MTK_PHY_TX_I2MPB_TEST_MODE_D1;
++		mask_gbe = MTK_PHY_DA_TX_I2MPB_D_GBE_MASK;
++		mask_tbt = MTK_PHY_DA_TX_I2MPB_D_TBT_MASK;
++		reg_100 = MTK_PHY_TX_I2MPB_TEST_MODE_D2;
++		mask_hbt = MTK_PHY_DA_TX_I2MPB_D_HBT_MASK;
++		mask_tst = MTK_PHY_DA_TX_I2MPB_D_TST_MASK;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, reg_dac1,
++		      0x8000|0xf0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, reg_dac2,
++		      0x8000|0xf0);
++
++	phydev_dbg(phydev, "Start TX Amp SW cal.\n");
++	first_calib = an7581_cal_cycle(phydev, MDIO_MMD_VEND1, reg,
++				       mask_gbe, zcal_ctrl << __ffs(mask_gbe));
++
++	/* If TX Amp calibration failed:
++	 * - increase dB until calibration succeed.
++	 * If TX Amp calibration succeeded:
++	 * - decrease dB until calibration fail to fine tune it.
++	 */
++	if (first_calib == 1)
++		calibration_polarity = -1;
++	else
++		calibration_polarity = 1;
++
++	while (zcal_ctrl > 0 &&
++	       zcal_ctrl < FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
++		zcal_ctrl += calibration_polarity;
++
++		ret = an7581_cal_cycle(phydev, MDIO_MMD_VEND1, reg,
++				       mask_gbe, zcal_ctrl << __ffs(mask_gbe));
++		/* Exit if we either failed or succeded compared to the
++		 * first calibration result. (aka we finished fine tuning or
++		 * we succeded with calibration)
++		 */
++		if (ret != first_calib)
++			break;
++	}
++
++	if (ret < 0) {
++		phydev_err(phydev, "TX AMP calibration failed.\n");
++		return -EINVAL;
++	}
++
++	if (zcal_ctrl == 0 ||
++	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
++		u8 val_tst, val_hbt;
++
++		phydev_err(phydev, "TX AMP SW calibration saturation. Defaulting to %x.\n",
++			   zcal_ctrl);
++
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg,
++			       mask_gbe | mask_tbt,
++			       (0x20 << __ffs(mask_gbe)) |
++			       (0x10 << __ffs(mask_tbt)));
++
++		if (txg_calen_x == PAIR_A) {
++			val_hbt = 0x60;
++			val_tst = 0x10;
++		} else if (txg_calen_x == PAIR_B) {
++			if (phydev->mdio.addr == 0x9)
++				val_hbt = 0x24;
++			else
++				val_hbt = 0x28;
++			val_tst = 0x20;
++		} else {
++			val_hbt = 0x4;
++			val_tst = 0x20;
++		}
++
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg_100,
++			       mask_hbt | mask_tst,
++			       (val_hbt << __ffs(mask_hbt)) |
++			       (val_tst << __ffs(mask_tst)));
++	} else {
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg,
++			       mask_gbe | mask_tbt,
++			       (zcal_ctrl << __ffs(mask_gbe)) |
++			       (zcal_ctrl << __ffs(mask_tbt)));
++
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg_100,
++			       mask_hbt | mask_tst,
++			       (zcal_ctrl << __ffs(mask_hbt)) |
++			       (zcal_ctrl << __ffs(mask_tst)));
++	}
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_A, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_B, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_C, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_D, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_A, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_B, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_C, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN1_D, 0);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, 0);
++
++	return 0;
++}
++
+ static int tx_r50_fill_result(struct phy_device *phydev, u16 tx_r50_cal_val,
+ 			      u8 txg_calen_x)
+ {
+@@ -641,6 +1096,141 @@ static int tx_r50_cal_efuse(struct phy_device *phydev, u32 *buf,
+ 	return 0;
+ }
+ 
++static u8 zcal_to_r45ohm[64] = {
++	127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127,
++	127, 127, 127, 127, 127, 127, 127, 127, 123, 119, 115, 112, 108, 104, 100,  96,
++	 94,  92,  88,  85,  82,  80,  76,  74,  72,  68,  66,  64,  62,  60,  56,  55,
++	 52,  50,  48,  46,  44,  42,  40,  39,  36,  35,  32,  32,  30,  28,  27,  25
++};
++
++static int tx_r50_cal_sw(struct phy_device *phydev, u8 txg_calen_x)
++{
++	struct airoha_socphy_shared *shared;
++	struct phy_device *phydev_p0;
++	int calibration_polarity;
++	u8 zcal_ctrl = 32;
++	int first_calib;
++	u16 reg;
++	int ret;
++
++	shared = phydev->shared->priv;
++	phydev_p0 = shared->phydev_p0;
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++
++	switch (txg_calen_x) {
++	case PAIR_A:
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG0,
++				 MTK_PHY_RG_ZCALEN_A);
++		break;
++	case PAIR_B:
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_B);
++		break;
++	case PAIR_C:
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_C);
++		break;
++	case PAIR_D:
++		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++				 MTK_PHY_RG_ANA_CAL_RG1,
++				 MTK_PHY_RG_ZCALEN_D);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	phydev_dbg(phydev, "Start TX r50 SW cal.\n");
++	first_calib = cal_cycle(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
++				MTK_PHY_RG_REXT_ZCAL_CTRL_MASK, zcal_ctrl);
++
++	if (first_calib < 0) {
++		phydev_err(phydev, "TX r50 SW calibration failed.\n");
++		return -EINVAL;
++	}
++
++	/* If TX r50 calibration failed:
++	 * - increase dB until calibration succeed.
++	 * If TX r50 calibration succeeded:
++	 * - decrease dB until calibration fail to fine tune it.
++	 */
++	if (first_calib == 1)
++		calibration_polarity = -1;
++	else
++		calibration_polarity = 1;
++
++	while (zcal_ctrl > 0 &&
++	       zcal_ctrl < FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
++		zcal_ctrl += calibration_polarity;
++
++		ret = cal_cycle(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
++				MTK_PHY_RG_REXT_ZCAL_CTRL_MASK, zcal_ctrl);
++		/* Exit if we either failed or succeded compared to the
++		 * first calibration result. (aka we finished fine tuning or
++		 * we succeded with calibration)
++		 */
++		if (ret != first_calib)
++			break;
++	}
++
++	if (ret < 0) {
++		phydev_err(phydev, "TX r50 SW calibration failed.\n");
++		return -EINVAL;
++	}
++
++	if (zcal_ctrl == 0 ||
++	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
++		zcal_ctrl = 32;
++		phydev_err(phydev, "TX r50 SW calibration saturation. Defaulting to %x.\n",
++			   zcal_ctrl);
++	} else {
++		zcal_ctrl = zcal_to_r45ohm[zcal_ctrl];
++	}
++
++	switch (txg_calen_x) {
++	case PAIR_A:
++		reg = BIT(7) | FIELD_PREP(MTK_PHY_CR_TX_R50_OFFSET_A_MASK, zcal_ctrl);
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1,
++			       MTK_PHY_RG_CR_TX_R50_OFFSET_A_B,
++			       BIT(7) | MTK_PHY_CR_TX_R50_OFFSET_A_MASK, reg);
++		break;
++	case PAIR_B:
++		reg = BIT(7) | FIELD_PREP(MTK_PHY_CR_TX_R50_OFFSET_B_MASK, zcal_ctrl);
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1,
++			       MTK_PHY_RG_CR_TX_R50_OFFSET_A_B,
++			       BIT(7) | MTK_PHY_CR_TX_R50_OFFSET_B_MASK, reg);
++		break;
++	case PAIR_C:
++		reg = BIT(7) | FIELD_PREP(MTK_PHY_CR_TX_R50_OFFSET_C_MASK, zcal_ctrl);
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1,
++			       MTK_PHY_RG_CR_TX_R50_OFFSET_C_D,
++			       BIT(7) | MTK_PHY_CR_TX_R50_OFFSET_C_MASK, reg);
++		break;
++	case PAIR_D:
++		reg = BIT(7) | FIELD_PREP(MTK_PHY_CR_TX_R50_OFFSET_D_MASK, zcal_ctrl);
++		phy_modify_mmd(phydev, MDIO_MMD_VEND1,
++			       MTK_PHY_RG_CR_TX_R50_OFFSET_C_D,
++			       BIT(7) | MTK_PHY_CR_TX_R50_OFFSET_D_MASK, reg);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++
++	return 0;
++}
++
+ static int tx_vcm_cal_sw(struct phy_device *phydev, u8 rg_txreserve_x)
+ {
+ 	u8 lower_idx, upper_idx, txreserve_val;
+@@ -804,6 +1394,41 @@ static int tx_vcm_cal_sw(struct phy_device *phydev, u8 rg_txreserve_x)
+ 	return ret;
+ }
+ 
++static int rx_offset_cal_sw(struct phy_device *phydev)
++{
++	/* Hw bypass, Fw cal */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x96, 0x8000);
++	/* tx/rx_cal_criteria_value */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x37, 0x0033);
++
++	/* rx offset cal by Hw setup */
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x39,
++			   BIT(14) | BIT(11));
++
++	/* disable rtune calibration */
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND2, 0x107,
++			   BIT(12));
++
++	/* bypass tx/rx dc offset cancellation process */
++	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, 0x171,
++			 BIT(8) | BIT(7));
++
++	/* rx offset calibration start */
++	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, 0x39,
++			 BIT(13));
++
++	/* rx offset calibration stop */
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x39,
++			   BIT(13));
++
++	mdelay(10);
++
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x171,
++			   BIT(8) | BIT(7));
++
++	return 0;
++}
++
+ static void mt798x_phy_common_finetune(struct phy_device *phydev)
+ {
+ 	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_52B5);
+@@ -1081,11 +1706,43 @@ static int cal_sw(struct phy_device *phydev, enum CAL_ITEM cal_item,
+ 	int ret;
+ 
+ 	for (pair_n = start_pair; pair_n <= end_pair; pair_n++) {
+-		/* TX_OFFSET & TX_AMP have no SW calibration. */
++		/* TX_OFFSET & TX_AMP have SW calibration only
++		 * on Airoha SoC.
++		 */
+ 		switch (cal_item) {
++		case REXT:
++			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
++				return -EINVAL;
++
++			ret = rext_cal_sw(phydev);
++			break;
++		case TX_OFFSET:
++			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
++				return -EINVAL;
++
++			ret = tx_offset_cal_sw(phydev, pair_n);
++			break;
++		case TX_AMP:
++			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
++				return -EINVAL;
++
++			ret = tx_amp_cal_sw(phydev, pair_n);
++			break;
+ 		case TX_VCM:
+ 			ret = tx_vcm_cal_sw(phydev, pair_n);
+ 			break;
++		case TX_R50:
++			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
++				return -EINVAL;
++
++			ret = tx_r50_cal_sw(phydev, pair_n);
++			break;
++		case RX_OFFSET:
++			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
++				return -EINVAL;
++
++			ret = rx_offset_cal_sw(phydev);
++			break;
+ 		default:
+ 			return -EINVAL;
+ 		}
+@@ -1420,8 +2077,10 @@ static int mt7981_phy_probe(struct phy_device *phydev)
+ 
+ static int an7581_phy_probe(struct phy_device *phydev)
+ {
++	struct airoha_socphy_shared *shared;
+ 	struct mtk_socphy_priv *priv;
+ 	struct pinctrl *pinctrl;
++	int ret;
+ 
+ 	/* Toggle pinctrl to enable PHY LED */
+ 	pinctrl = devm_pinctrl_get_select(&phydev->mdio.dev, "gbe-led");
+@@ -1429,15 +2088,228 @@ static int an7581_phy_probe(struct phy_device *phydev)
+ 		dev_err(&phydev->mdio.bus->dev,
+ 			"Failed to setup PHY LED pinctrl\n");
+ 
++	ret = devm_phy_package_join(&phydev->mdio.dev, phydev, 0,
++				    sizeof(struct airoha_socphy_shared));
++	if (ret)
++		return ret;
++
+ 	priv = devm_kzalloc(&phydev->mdio.dev, sizeof(*priv), GFP_KERNEL);
+ 	if (!priv)
+ 		return -ENOMEM;
+ 
++	shared = phydev->shared->priv;
++	priv = &shared->priv[phydev->mdio.addr];
++
++	if (phydev->mdio.addr == 0x9)
++		shared->phydev_p0 = phydev;
++
+ 	phydev->priv = priv;
+ 
+ 	return 0;
+ }
+ 
++static int an7581_phy_calib(struct phy_device *phydev)
++{
++	struct airoha_socphy_shared *shared;
++	u16 dev1e_145_tmp;
++	u16 bmcr_tmp;
++	int ret;
++
++	shared = phydev->shared->priv;
++
++	bmcr_tmp = phy_read(phydev, MII_BMCR);
++
++	/* Force 1G full duplex for calibration */
++	phy_write(phydev, MII_BMCR, BMCR_FULLDPLX | BMCR_SPEED1000);
++
++	dev1e_145_tmp = phy_read_mmd(phydev, MDIO_MMD_VEND1, 0x0145);
++
++	/* BG voltage output */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x0100, 0xc000);
++	/* fix mdi */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0145, 0x1010);
++	/* disable tx slew control */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0185, 0x0000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x00fb, 0x0100);
++
++	if (!shared->rext_sw_calib_done) {
++		ret = start_cal(phydev, REXT, SW_M, NO_PAIR, NO_PAIR, NULL);
++		if (ret)
++			return ret;
++
++		shared->rext_sw_calib_done = true;
++	}
++
++	ret = start_cal(phydev, TX_R50, SW_M, PAIR_A, PAIR_D, NULL);
++	if (ret)
++		return ret;
++
++	ret = start_cal(phydev, TX_OFFSET, SW_M, PAIR_A, PAIR_D, NULL);
++	if (ret)
++		return ret;
++
++	ret = start_cal(phydev, TX_AMP, SW_M, PAIR_A, PAIR_D, NULL);
++	if (ret)
++		return ret;
++
++	ret = start_cal(phydev, RX_OFFSET, SW_M, NO_PAIR, NO_PAIR, NULL);
++	if (ret)
++		return ret;
++
++	/* restore BMCR */
++	phy_write(phydev, MII_BMCR, bmcr_tmp);
++	/* Restore MDI */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0145, dev1e_145_tmp);
++
++	/* Gating, short with other pair */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x15, 0x0);
++
++	return 0;
++}
++
++static int an7581_phy_config_init(struct phy_device *phydev)
++{
++	/* i2mpb_tbh_ots */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x273, 0x1000);
++	/* ps_op 0x3cff, for PHYD bug, need to workaround  */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x272, 0x7cff);
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x268, 0x07f4);
++	/* ps_dri */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x269, 0x444f);
++	/* 0x4e13, for PHYD bug, need to workaround */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x271, 0x7e14);
++	/* pair delay (digital) */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x44, 0x00a0);
++	/* 10 base Tx */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x27c, 0x0808);
++	/* disable 10 base-Te */
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x27b, 0x1177);
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x417, 0x7775);
++
++	/* 0->1, middle */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0, 0x018c);
++	/* 0->1, ov1 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1, 0x01c4);
++	/* 0->1, ov2, z2p_ovs */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x2, 0x01c4);
++	/* 1->0, middle */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3, 0x0104);
++	/* 1->0, ov1 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x4, 0x0204);
++	/* 1->0, ov2, p2z_ovs */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x5, 0x0204);
++
++	/* 0->1, middle */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x6, 0x038c);
++	/* 0->1, ov1 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x7, 0x03c4);
++	/* 0->1, ov2, z2p_ovs */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x8, 0x03c4);
++	/* 1->0, middle */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x9, 0x0304);
++	/* 1->0, ov1 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xa, 0x0004);
++	/* 1->0, ov2, n2z_ovs */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xb, 0x0004);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x13, 0x0000);
++	/* pair delay (afe) */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x14, 0x0000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x44, 0x0000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x176, 0x5500);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x177, 0x0055);
++
++	/* hvga_bias : enhance rx voltage */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x41, 0x3333);
++	/* gain down (dB); 0x00:0dB, 0x01:4dB  // allen_20180917 no rx gain down for IOT performance */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x40, 0x0000);
++	/* txvld disable, 1e_201[7:0]=0, disable voltage mode when 100_EEE  */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0201, 0x4000);
++	/* RX vbuffer bypass pwd */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3d, 0x0000);
++	/* TX vld bypass pwd */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0198, 0x0001);
++	/* TX vld bypass pwd (pair A/B for EEE) */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e, 0xc000);
++	/* EEE wake up cnt from 0x14 to 0x20 */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x23c, 0x0a20);
++
++	/* for 10M TP-IDL */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1a3, 0x00d2);
++	/* for 10M TP-IDL */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1a4, 0x010e);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x189, 0x0110);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x122, 0xffff);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x123, 0xffff);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x234, 0x1180);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x238, 0x0120);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x120, 0x8014);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x239, 0x0117);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x14a, 0xee20);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x19b, 0x0111);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x147, 0x0000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x2d1, 0x0733);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x236, 0x0020);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x144, 0x0200);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x323, 0x0011);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x324, 0x013f);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x326, 0x0037);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x190, 0x0110);
++	/* hvga_rsel */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x191, 0x4444);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xa6, 0x0350);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3c, 0x0000);
++
++	phy_write(phydev, MII_CTRL1000,
++		  ADVERTISE_1000FULL | CTL1000_PREFER_MASTER);
++
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_1);
++	__phy_write(phydev, 0x14, 0x3a14);
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
++
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_3);
++	__phy_modify(phydev, MTK_PHY_LPI_REG_1c, MTK_PHY_SMI_DET_ON_THRESH_MASK,
++		     FIELD_PREP(MTK_PHY_SMI_DET_ON_THRESH_MASK, 0xc));
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
++
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_52B5);
++
++	/* Timing Recovery */
++	__mtk_tr_write(phydev, 0x1, 0xd, 0x26, 0x444444);
++	/* PMA */
++	__mtk_tr_write(phydev, 0x1, 0xf, 0x0, 0x00001e);
++	__mtk_tr_write(phydev, 0x1, 0xf, 0x1, 0x6fb90a);
++	__mtk_tr_write(phydev, 0x1, 0xf, 017, 0x060671);
++	__mtk_tr_write(phydev, 0x1, 0xf, 0x18, 0x0e2f00);
++
++	/* R1000DEC */
++	__mtk_tr_write(phydev, 0x0, 0x7, 0x15, 0x0055a0);
++	__mtk_tr_write(phydev, 0x0, 0x7, 0x17, 0x07ff3f);
++
++	/* DSP Filter */
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x06, 0x2ebaef);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x08, 0x00000b);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x10, 0x005010);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x11, 0x040001);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x03, 0x000004);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x13, 0x018670);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x1b, 0x000072);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x1c, 0x003210);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x14, 0x00024a);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x0d, 0x02314f);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x0c, 0x00504d);
++	__mtk_tr_write(phydev, 0x2, 0xd, 0x0f, 0x003028);
++
++	/* PMA */
++	__mtk_tr_write(phydev, 0x1, 0xf, 0x3, 0x082422);
++
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
++
++	return an7581_phy_calib(phydev);
++}
++
+ static int an7581_phy_led_polarity_set(struct phy_device *phydev, int index,
+ 				       unsigned long modes)
+ {
+@@ -1508,6 +2380,7 @@ static struct phy_driver mtk_socphy_driver[] = {
+ 	{
+ 		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_AN7581),
+ 		.name		= "Airoha AN7581 PHY",
++		.config_init	= an7581_phy_config_init,
+ 		.probe		= an7581_phy_probe,
+ 		.led_blink_set	= mt798x_phy_led_blink_set,
+ 		.led_brightness_set = mt798x_phy_led_brightness_set,
+@@ -1515,6 +2388,8 @@ static struct phy_driver mtk_socphy_driver[] = {
+ 		.led_hw_control_set = mt798x_phy_led_hw_control_set,
+ 		.led_hw_control_get = mt798x_phy_led_hw_control_get,
+ 		.led_polarity_set = an7581_phy_led_polarity_set,
++		.read_page	= mtk_phy_read_page,
++		.write_page	= mtk_phy_write_page,
+ 	},
+ 	{
+ 		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_AN7583),
+-- 
+2.48.1
+
