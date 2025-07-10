@@ -1,6 +1,6 @@
-From 909054708eb840df8f6d904ad79f6a990f753de9 Mon Sep 17 00:00:00 2001
+From 6a325aed130bb68790e765f923e76ec5669d2da7 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
-Date: Wed, 26 Mar 2025 13:08:07 +0100
+Date: Thu, 10 Apr 2025 12:04:04 +0200
 Subject: [PATCH 2/2] net: phy: mediatek: add Airoha PHY ID to SoC driver
 
 Airoha AN7581 SoC ship with a Switch based on the MT753x Switch embedded
@@ -11,31 +11,34 @@ Add support for the PHY ID for the Airoha embedded Switch and define a
 simple probe function to toggle these pins. Also fill the LED functions
 and add dedicated function to define LED polarity.
 
+Reviewed-by: Andrew Lunn <andrew@lunn.ch>
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+Link: https://patch.msgid.link/20250410100410.348-2-ansuelsmth@gmail.com
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
 ---
- drivers/net/phy/Kconfig      |  4 +-
- drivers/net/phy/mediatek-ge-soc.c | 62 +++++++++++++++++++++++++++
- 2 files changed, 64 insertions(+), 2 deletions(-)
+ drivers/net/phy/mediatek/Kconfig      |  4 +-
+ drivers/net/phy/mediatek/mtk-ge-soc.c | 62 +++++++++++++++++++++++++++
+ 2 files changed, 65 insertions(+), 1 deletion(-)
 
-diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
-index c80b4c5b7b66..0fb496757e04 100644
---- a/drivers/net/phy/Kconfig
-+++ b/drivers/net/phy/Kconfig
-@@ -15,8 +15,8 @@ config MEDIATEK_GE_PHY
+diff --git a/drivers/net/phy/mediatek/Kconfig b/drivers/net/phy/mediatek/Kconfig
+index 6a4c2b328c41..4308002bb82c 100644
+--- a/drivers/net/phy/mediatek/Kconfig
++++ b/drivers/net/phy/mediatek/Kconfig
+@@ -15,7 +15,9 @@ config MEDIATEK_GE_PHY
  
  config MEDIATEK_GE_SOC_PHY
  	tristate "MediaTek SoC Ethernet PHYs"
--	depends on (ARM64 && ARCH_MEDIATEK) || COMPILE_TEST
--	depends on NVMEM_MTK_EFUSE || COMPILE_TEST
-+	depends on (ARM64 && (ARCH_MEDIATEK || ARCH_AIROHA)) || COMPILE_TEST
-+	depends on (ARCH_MEDIATEK && NVMEM_MTK_EFUSE) || ARCH_AIROHA || COMPILE_TEST
+-	depends on (ARM64 && ARCH_MEDIATEK && NVMEM_MTK_EFUSE) || COMPILE_TEST
++	depends on ARM64 || COMPILE_TEST
++	depends on ARCH_AIROHA || (ARCH_MEDIATEK && NVMEM_MTK_EFUSE) || \
++		   COMPILE_TEST
+ 	select MTK_NET_PHYLIB
  	help
  	  Supports MediaTek SoC built-in Gigabit Ethernet PHYs.
- 
-diff --git a/drivers/net/phy/mediatek-ge-soc.c b/drivers/net/phy/mediatek-ge-soc.c
+diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.c b/drivers/net/phy/mediatek/mtk-ge-soc.c
 index 175cf5239bba..fd0e447ffce7 100644
---- a/drivers/net/phy/mediatek-ge-soc.c
-+++ b/drivers/net/phy/mediatek-ge-soc.c
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
 @@ -11,8 +11,11 @@
  #include "../phylib.h"
  #include "mtk.h"

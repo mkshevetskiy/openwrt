@@ -1,21 +1,24 @@
-From 1dbc4c04bd94158d12ca929a693d1158ebd3b93d Mon Sep 17 00:00:00 2001
+From 8bc3c234dcb65a018120dab96c83845cc7ff35c6 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
-Date: Thu, 22 May 2025 15:23:07 +0200
-Subject: [PATCH 3/3] net: phy: mediatek: Add Airoha AN7583 PHY support
+Date: Thu, 22 May 2025 18:53:11 +0200
+Subject: [PATCH] net: phy: mediatek: Add Airoha AN7583 PHY support
 
 Add Airoha AN7583 PHY support based on Airoha AN7581 with the small
 difference that BMCR_PDOWN is enabled by default and needs to be cleared
 to make the internal PHY correctly work.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+Reviewed-by: Andrew Lunn <andrew@lunn.ch>
+Link: https://patch.msgid.link/20250522165313.6411-4-ansuelsmth@gmail.com
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
 ---
- drivers/net/phy/mediatek-ge-soc.c | 20 ++++++++++++++++++++
+ drivers/net/phy/mediatek/mtk-ge-soc.c | 20 ++++++++++++++++++++
  1 file changed, 20 insertions(+)
 
-diff --git a/drivers/net/phy/mediatek-ge-soc.c b/drivers/net/phy/mediatek-ge-soc.c
+diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.c b/drivers/net/phy/mediatek/mtk-ge-soc.c
 index a284e8435cb6..cd09fbf92ef2 100644
---- a/drivers/net/phy/mediatek-ge-soc.c
-+++ b/drivers/net/phy/mediatek-ge-soc.c
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
 @@ -17,6 +17,7 @@
  #define MTK_GPHY_ID_MT7981			0x03a29461
  #define MTK_GPHY_ID_MT7988			0x03a29481
