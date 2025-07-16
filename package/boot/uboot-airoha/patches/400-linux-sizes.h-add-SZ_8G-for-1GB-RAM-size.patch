@@ -1,0 +1,42 @@
+From 20d9f2fa9357f1c79d1d2698f472f9808c385700 Mon Sep 17 00:00:00 2001
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Wed, 16 Jul 2025 09:22:03 +0200
+Subject: [PATCH] linux/sizes.h: add SZ_8G for 1GB RAM size
+
+Add additional macro to handle a 1GB RAM size in 8Gb.
+
+Drop the redundant entry from the Mediatek arch.
+
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+---
+ arch/arm/mach-mediatek/mt7988/init.c | 2 --
+ include/linux/sizes.h                | 1 +
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-mediatek/mt7988/init.c b/arch/arm/mach-mediatek/mt7988/init.c
+index 2efc8c6a88f..2b6f38983af 100644
+--- a/arch/arm/mach-mediatek/mt7988/init.c
++++ b/arch/arm/mach-mediatek/mt7988/init.c
+@@ -12,8 +12,6 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+-#define SZ_8G				_AC(0x200000000, ULL)
+-
+ int dram_init(void)
+ {
+ 	int ret;
+diff --git a/include/linux/sizes.h b/include/linux/sizes.h
+index fbde0bc7e88..35a23d714b7 100644
+--- a/include/linux/sizes.h
++++ b/include/linux/sizes.h
+@@ -47,5 +47,6 @@
+ #define SZ_2G				0x80000000
+ 
+ #define SZ_4G				_AC(0x100000000, ULL)
++#define SZ_8G				_AC(0x200000000, ULL)
+ 
+ #endif /* __LINUX_SIZES_H__ */
+-- 
+2.48.1
+
