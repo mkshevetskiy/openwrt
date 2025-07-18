@@ -1,7 +1,7 @@
-From ed4af6b0b2b8b6940d415f9f6eaaaf52bfcd6f1d Mon Sep 17 00:00:00 2001
+From 7f2cc7f79298fc7ef1eb44a5c6dc13ac1db10116 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 18 Jul 2025 09:15:00 +0200
-Subject: [PATCH] i2c: mt7621: rework cmd/wait OPs to support atomix afer
+Subject: [PATCH 1/4] i2c: mt7621: rework cmd/wait OPs to support atomic afer
  variant
 
 It was reported the need for atomic operation on some Airoha SoC that
