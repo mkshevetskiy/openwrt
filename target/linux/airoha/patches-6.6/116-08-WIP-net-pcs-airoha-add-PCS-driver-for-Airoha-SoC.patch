@@ -1,4 +1,4 @@
-From 37d4b81d13e093c612caf05dd7de5d90559badc8 Mon Sep 17 00:00:00 2001
+From b689d1d25ef389f82eec21e7c8e4454837677287 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 17 Jan 2025 12:40:32 +0100
 Subject: [PATCH 1/4] net: pcs: airoha: add PCS driver for Airoha SoC
@@ -15,9 +15,9 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/pcs/Kconfig        |    6 +
  drivers/net/pcs/Makefile       |    1 +
- drivers/net/pcs/pcs-airoha.c   | 2970 ++++++++++++++++++++++++++++++++
+ drivers/net/pcs/pcs-airoha.c   | 2972 ++++++++++++++++++++++++++++++++
  include/linux/pcs/pcs-airoha.h |   14 +
- 4 files changed, 2991 insertions(+)
+ 4 files changed, 2993 insertions(+)
  create mode 100644 drivers/net/pcs/pcs-airoha.c
  create mode 100644 include/linux/pcs/pcs-airoha.h
 
@@ -52,10 +52,10 @@ index 4f7920618b90..0f82db009b65 100644
  obj-$(CONFIG_PCS_XPCS)		+= pcs_xpcs.o
 diff --git a/drivers/net/pcs/pcs-airoha.c b/drivers/net/pcs/pcs-airoha.c
 new file mode 100644
-index 000000000000..77d73163aa87
+index 000000000000..e331100e4d51
 --- /dev/null
 +++ b/drivers/net/pcs/pcs-airoha.c
-@@ -0,0 +1,2970 @@
+@@ -0,0 +1,2972 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -892,6 +892,7 @@ index 000000000000..77d73163aa87
 +		break;
 +	}
 +
++	/* TODO better handle reset from MAC */
 +	ret = reset_control_bulk_assert(ARRAY_SIZE(priv->rsts),
 +					priv->rsts);
 +	if (ret)
@@ -2506,11 +2507,12 @@ index 000000000000..77d73163aa87
 +	/* Configure Interrupt for various modes */
 +	airoha_pcs_interrupt_init(priv, interface);
 +
-+	/* FIXME: With an attached Aeonsemi PHY, rate adaption is needed
-+	 * even with no inband.
-+	 */
 +	rate_adapt = AIROHA_PCS_HSGMII_RATE_ADAPT_RX_EN |
 +		     AIROHA_PCS_HSGMII_RATE_ADAPT_TX_EN;
++
++	if (interface == PHY_INTERFACE_MODE_SGMII)
++		rate_adapt |= AIROHA_PCS_HSGMII_RATE_ADAPT_RX_BYPASS |
++			      AIROHA_PCS_HSGMII_RATE_ADAPT_TX_BYPASS;
 +
 +	/* AN Auto Settings (Rate Adaptation) */
 +	regmap_update_bits(priv->hsgmii_rate_adp, AIROHA_PCS_HSGMII_RATE_ADAPT_CTRL_0,
@@ -3047,5 +3049,5 @@ index 000000000000..cfe3a0411486
 +
 +#endif /* __LINUX_PCS_AIROHA_H */
 -- 
-2.48.1
+2.50.0
 
