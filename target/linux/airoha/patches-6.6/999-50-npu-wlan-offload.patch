@@ -1,11 +1,10 @@
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
 +++ b/drivers/net/ethernet/airoha/airoha_eth.c
-@@ -5,8 +5,10 @@
+@@ -5,7 +5,9 @@
   */
  #include <linux/of.h>
  #include <linux/of_net.h>
 +#include <linux/of_reserved_mem.h>
- #include <linux/of_platform.h>
  #include <linux/platform_device.h>
 +#include <linux/soc/airoha/airoha_offload.h>
  #include <linux/tcp.h>

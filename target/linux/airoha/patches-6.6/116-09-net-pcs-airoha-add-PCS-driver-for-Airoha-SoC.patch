@@ -1,7 +1,7 @@
-From b689d1d25ef389f82eec21e7c8e4454837677287 Mon Sep 17 00:00:00 2001
+From 05e5ffa593ec11729765892af4a6448602e348da Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 17 Jan 2025 12:40:32 +0100
-Subject: [PATCH 1/4] net: pcs: airoha: add PCS driver for Airoha SoC
+Subject: [PATCH 2/6] net: pcs: airoha: add PCS driver for Airoha SoC
 
 Add PCS driver for Airoha SoC for ethernet SERDES and permit usage of
 external PHY or connected SFP cage. Supported modes are USXGMII, HSGMII
@@ -15,9 +15,9 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/pcs/Kconfig        |    6 +
  drivers/net/pcs/Makefile       |    1 +
- drivers/net/pcs/pcs-airoha.c   | 2972 ++++++++++++++++++++++++++++++++
- include/linux/pcs/pcs-airoha.h |   14 +
- 4 files changed, 2993 insertions(+)
+ drivers/net/pcs/pcs-airoha.c   | 3068 ++++++++++++++++++++++++++++++++
+ include/linux/pcs/pcs-airoha.h |    9 +
+ 4 files changed, 3084 insertions(+)
  create mode 100644 drivers/net/pcs/pcs-airoha.c
  create mode 100644 include/linux/pcs/pcs-airoha.h
 
@@ -52,10 +52,10 @@ index 4f7920618b90..0f82db009b65 100644
  obj-$(CONFIG_PCS_XPCS)		+= pcs_xpcs.o
 diff --git a/drivers/net/pcs/pcs-airoha.c b/drivers/net/pcs/pcs-airoha.c
 new file mode 100644
-index 000000000000..e331100e4d51
+index 000000000000..c0da8125a86c
 --- /dev/null
 +++ b/drivers/net/pcs/pcs-airoha.c
-@@ -0,0 +1,2972 @@
+@@ -0,0 +1,3069 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -86,6 +86,26 @@ index 000000000000..e331100e4d51
 +#define   AIROHA_SCU_PON_XSI_SEL		GENMASK(10, 9)
 +#define   AIROHA_SCU_PON_XSI_USXGMII		FIELD_PREP_CONST(AIROHA_SCU_PON_XSI_SEL, 0x1)
 +#define   AIROHA_SCU_PON_XSI_HSGMII		FIELD_PREP_CONST(AIROHA_SCU_PON_XSI_SEL, 0x2)
++
++/* XFI_MAC */
++#define AIROHA_PCS_XFI_MAC_XFI_GIB_CFG		0x0
++#define   AIROHA_PCS_XFI_RX_FRAG_LEN		GENMASK(26, 22)
++#define   AIROHA_PCS_XFI_TX_FRAG_LEN		GENMASK(21, 17)
++#define   AIROHA_PCS_XFI_IPG_NUM		GENMASK(15, 10)
++#define   AIROHA_PCS_XFI_TX_FC_EN		BIT(5)
++#define   AIROHA_PCS_XFI_RX_FC_EN		BIT(4)
++#define   AIROHA_PCS_XFI_RXMPI_STOP		BIT(3)
++#define   AIROHA_PCS_XFI_RXMBI_STOP		BIT(2)
++#define   AIROHA_PCS_XFI_TXMPI_STOP		BIT(1)
++#define   AIROHA_PCS_XFI_TXMBI_STOP		BIT(0)
++#define AIROHA_PCS_XFI_MAC_XFI_LOGIC_RST	0x10
++#define   AIROHA_PCS_XFI_MAC_LOGIC_RST		BIT(0)
++#define AIROHA_PCS_XFI_MAC_XFI_MACADDRH		0x60
++#define   AIROHA_PCS_XFI_MAC_MACADDRH		GENMASK(15, 0)
++#define AIROHA_PCS_XFI_MAC_XFI_MACADDRL		0x64
++#define   AIROHA_PCS_XFI_MAC_MACADDRL		GENMASK(31, 0)
++#define AIROHA_PCS_XFI_MAC_XFI_CNT_CLR		0x100
++#define   AIROHA_PCS_XFI_GLB_CNT_CLR		BIT(0)
 +
 +/* HSGMII_AN */
 +#define AIROHA_PCS_HSGMII_AN_SGMII_REG_AN_0	0x0
@@ -636,7 +656,7 @@ index 000000000000..e331100e4d51
 +#define AIROHA_PCS_PMA_RX_FLL_5			0x184
 +#define   AIROHA_PCS_PMA_FLL_IDAC_MIN		GENMASK(26, 16)
 +#define   AIROHA_PCS_PMA_FLL_IDAC_MAX		GENMASK(10, 0)
-+#define AIROHA_PCS_PMA_RX_FLL_B		        0x19c
++#define AIROHA_PCS_PMA_RX_FLL_B			0x19c
 +#define   AIROHA_PCS_PMA_LOAD_EN		BIT(0)
 +#define AIROHA_PCS_PMA_RX_RESET_1		0x208
 +#define   AIROHA_PCS_PMA_SIGDET_RST_B		BIT(8)
@@ -2486,9 +2506,6 @@ index 000000000000..e331100e4d51
 +
 +	priv->interface = interface;
 +
-+	/* Select HSGMII or USXGMII in SCU regs */
-+	airoha_pcs_setup_scu(priv, interface);
-+
 +	/* Enable Analog Common Lane */
 +	regmap_set_bits(priv->xfi_ana, AIROHA_PCS_ANA_PXP_CMN_EN,
 +			AIROHA_PCS_ANA_CMN_EN);
@@ -2838,13 +2855,93 @@ index 000000000000..e331100e4d51
 +
 +	regmap_set_bits(priv->xfi_pma, AIROHA_PCS_PMA_SW_RST_SET,
 +			AIROHA_PCS_PMA_SW_HSG_TXPCS_RST_N);
++
++	/* BPI BMI enable */
++	regmap_clear_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			  AIROHA_PCS_XFI_RXMPI_STOP |
++			  AIROHA_PCS_XFI_RXMBI_STOP |
++			  AIROHA_PCS_XFI_TXMPI_STOP |
++			  AIROHA_PCS_XFI_TXMBI_STOP);
++}
++
++static void airoha_pcs_link_down(struct phylink_pcs *pcs)
++{
++	struct airoha_pcs_port *port = phylink_pcs_to_airoha_pcs_port(pcs);
++	struct airoha_pcs_priv *priv = port->priv;
++
++	/* MPI MBI disable */
++	regmap_set_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			AIROHA_PCS_XFI_RXMPI_STOP |
++			AIROHA_PCS_XFI_RXMBI_STOP |
++			AIROHA_PCS_XFI_TXMPI_STOP |
++			AIROHA_PCS_XFI_TXMBI_STOP);
++}
++
++static void airoha_pcs_pre_config(struct phylink_pcs *pcs,
++				  phy_interface_t interface)
++{
++	struct airoha_pcs_port *port = phylink_pcs_to_airoha_pcs_port(pcs);
++	struct airoha_pcs_priv *priv = port->priv;
++
++	/* Select HSGMII or USXGMII in SCU regs */
++	airoha_pcs_setup_scu(priv, interface);
++
++	/* MPI MBI disable */
++	regmap_set_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			AIROHA_PCS_XFI_RXMPI_STOP |
++			AIROHA_PCS_XFI_RXMBI_STOP |
++			AIROHA_PCS_XFI_TXMPI_STOP |
++			AIROHA_PCS_XFI_TXMBI_STOP);
++
++	/* Write 1 to trigger reset and clear */
++	regmap_clear_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_LOGIC_RST,
++			  AIROHA_PCS_XFI_MAC_LOGIC_RST);
++	regmap_set_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_LOGIC_RST,
++			AIROHA_PCS_XFI_MAC_LOGIC_RST);
++
++	usleep_range(1000, 2000);
++
++	/* Clear XFI MAC counter */
++	regmap_set_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_CNT_CLR,
++			AIROHA_PCS_XFI_GLB_CNT_CLR);
++}
++
++static int airoha_pcs_post_config(struct phylink_pcs *pcs,
++				  phy_interface_t interface)
++{
++	struct airoha_pcs_port *port = phylink_pcs_to_airoha_pcs_port(pcs);
++	struct airoha_pcs_priv *priv = port->priv;
++
++	/* Frag disable */
++	regmap_update_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			   AIROHA_PCS_XFI_RX_FRAG_LEN,
++			   FIELD_PREP(AIROHA_PCS_XFI_RX_FRAG_LEN, 31));
++	regmap_update_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			   AIROHA_PCS_XFI_TX_FRAG_LEN,
++			   FIELD_PREP(AIROHA_PCS_XFI_TX_FRAG_LEN, 31));
++
++	/* IPG NUM */
++	regmap_update_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			   AIROHA_PCS_XFI_IPG_NUM,
++			   FIELD_PREP(AIROHA_PCS_XFI_IPG_NUM, 10));
++
++	/* Enable TX/RX flow control */
++	regmap_set_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			AIROHA_PCS_XFI_TX_FC_EN);
++	regmap_set_bits(priv->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_GIB_CFG,
++			AIROHA_PCS_XFI_RX_FC_EN);
++
++	return 0;
 +}
 +
 +static const struct phylink_pcs_ops airoha_pcs_ops = {
++	.pcs_pre_config = airoha_pcs_pre_config,
++	.pcs_post_config = airoha_pcs_post_config,
 +	.pcs_get_state = airoha_pcs_get_state,
 +	.pcs_config = airoha_pcs_config,
 +	.pcs_an_restart = airoha_pcs_an_restart,
 +	.pcs_link_up = airoha_pcs_link_up,
++	.pcs_link_down = airoha_pcs_link_down,
 +};
 +
 +struct phylink_pcs *airoha_pcs_create(struct device *dev)
@@ -3030,19 +3127,14 @@ index 000000000000..e331100e4d51
 +MODULE_AUTHOR("Christian Marangi <ansuelsmth@gmail.com>");
 diff --git a/include/linux/pcs/pcs-airoha.h b/include/linux/pcs/pcs-airoha.h
 new file mode 100644
-index 000000000000..cfe3a0411486
+index 000000000000..9b17134f7290
 --- /dev/null
 +++ b/include/linux/pcs/pcs-airoha.h
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,9 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
 +#ifndef __LINUX_PCS_AIROHA_H
 +#define __LINUX_PCS_AIROHA_H
-+
-+/* XFI_MAC */
-+#define AIROHA_PCS_XFI_MAC_XFI_GIB_CFG		0x0
-+#define   AIROHA_PCS_XFI_TX_FC_EN		BIT(5)
-+#define   AIROHA_PCS_XFI_RX_FC_EN		BIT(4)
 +
 +struct phylink_pcs *airoha_pcs_create(struct device *dev);
 +void airoha_pcs_destroy(struct phylink_pcs *pcs);

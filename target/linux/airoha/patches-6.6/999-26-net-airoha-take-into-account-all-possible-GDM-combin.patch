@@ -81,7 +81,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	SET_NETDEV_DEV(dev, eth->dev);
  
  	/* reserve hw queues for HTB offloading */
-@@ -2667,37 +2677,57 @@ static int airoha_alloc_gdm_port(struct
+@@ -2667,26 +2677,46 @@ static int airoha_alloc_gdm_port(struct
  	port = netdev_priv(dev);
  	u64_stats_init(&port->stats.syncp);
  	spin_lock_init(&port->stats.lock);
@@ -95,20 +95,9 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 -		return err;
 -
 -	if (airhoa_is_phy_external(port)) {
--		const u8 *mac_addr = dev->dev_addr;
--
 -		err = airoha_setup_phylink(dev);
 -		if (err)
 -			return err;
--
--		/* Setup XFI mac address */
--		regmap_write(port->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_MACADDRL,
--			     FIELD_PREP(AIROHA_PCS_XFI_MAC_MACADDRL,
--					mac_addr[0] << 24 | mac_addr[1] << 16 |
--					mac_addr[2] << 8 | mac_addr[3]));
--		regmap_write(port->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_MACADDRH,
--			     FIELD_PREP(AIROHA_PCS_XFI_MAC_MACADDRH,
--					mac_addr[4] << 8 | mac_addr[5]));
 -	}
 +	return airoha_metadata_dst_alloc(port);
 +}
@@ -139,20 +128,9 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +			return err;
 +
 +		if (airhoa_is_phy_external(port)) {
-+			const u8 *mac_addr = port->dev->dev_addr;
-+
 +			err = airoha_setup_phylink(port->dev);
 +			if (err)
 +				return err;
-+
-+			/* Setup XFI mac address */
-+			regmap_write(port->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_MACADDRL,
-+				FIELD_PREP(AIROHA_PCS_XFI_MAC_MACADDRL,
-+						mac_addr[0] << 24 | mac_addr[1] << 16 |
-+						mac_addr[2] << 8 | mac_addr[3]));
-+			regmap_write(port->xfi_mac, AIROHA_PCS_XFI_MAC_XFI_MACADDRH,
-+				FIELD_PREP(AIROHA_PCS_XFI_MAC_MACADDRH,
-+						mac_addr[4] << 8 | mac_addr[5]));
 +		}
 +
 +		err = register_netdev(port->dev);
@@ -200,12 +178,12 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +			continue;
 +
 +		if (port->dev->reg_state == NETREG_REGISTERED) {
+ 			unregister_netdev(port->dev);
+-			airoha_metadata_dst_free(port);
  			if (airhoa_is_phy_external(port)) {
  				phylink_destroy(port->phylink);
  				airoha_pcs_destroy(port->pcs);
  			}
- 			unregister_netdev(port->dev);
--			airoha_metadata_dst_free(port);
  		}
 +		airoha_metadata_dst_free(port);
  	}

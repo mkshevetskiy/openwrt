@@ -1,7 +1,7 @@
-From 3db91758fc2ba714fb16ad9f98e8aef13ca9bd33 Mon Sep 17 00:00:00 2001
+From 6548e580509397a622b7c504a79de93414771459 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Wed, 25 Jun 2025 00:04:36 +0200
-Subject: [PATCH 4/4] net: ethernet: airoha: define sport value for GDM3
+Subject: [PATCH 6/6] net: ethernet: airoha: define sport value for GDM3
 
 On Airoha AN7583, the Serdes Ethernet goes through the GDM3 port.
 To correctly receive packet for QDMA, add the sport value to identify
@@ -13,7 +13,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  1 file changed, 3 insertions(+)
 
 diff --git a/drivers/net/ethernet/airoha/airoha_eth.c b/drivers/net/ethernet/airoha/airoha_eth.c
-index cc0f9448f8d1..6c471ee2720a 100644
+index 0c198ab6b30f..3cb4d35cd475 100644
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
 +++ b/drivers/net/ethernet/airoha/airoha_eth.c
 @@ -598,6 +598,9 @@ static int airoha_qdma_get_gdm_port(struct airoha_eth *eth,
@@ -27,5 +27,5 @@ index cc0f9448f8d1..6c471ee2720a 100644
  		port = 0; /* GDM1 */
  		break;
 -- 
-2.48.1
+2.50.0
 

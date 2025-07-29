@@ -180,7 +180,7 @@ index 00c80221a274..b3c57aac8480 100644
  static const u16 en7581_rst_ofs[] = {
  	REG_RST_CTRL2,
  	REG_RST_CTRL1,
-@@ -369,6 +510,59 @@ static const u16 en7581_rst_map[] = {
+@@ -369,6 +510,60 @@ static const u16 en7581_rst_map[] = {
  	[EN7581_XPON_MAC_RST]		= RST_NR_PER_BANK + 31,
  };
  
@@ -201,6 +201,7 @@ index 00c80221a274..b3c57aac8480 100644
 +	[AN7583_DUAL_HSI1_RST]		= 14,
 +	[AN7583_DUAL_HSI0_MAC_RST]	= 16,
 +	[AN7583_DUAL_HSI1_MAC_RST]	= 17,
++	[AN7583_XPON_XFI_RST]		= 18,
 +	[AN7583_WDMA_RST]		= 19,
 +	[AN7583_WOE0_RST]		= 20,
 +	[AN7583_HSDMA_RST]		= 22,
