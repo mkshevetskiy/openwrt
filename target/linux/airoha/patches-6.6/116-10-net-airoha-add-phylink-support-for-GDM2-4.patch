@@ -86,7 +86,7 @@ index faca939053e3..ede4f552896f 100644
  static int airoha_metadata_dst_alloc(struct airoha_gdm_port *port)
  {
  	int i;
-@@ -2417,6 +2451,91 @@ static void airoha_metadata_dst_free(struct airoha_gdm_port *port)
+@@ -2417,6 +2451,97 @@ static void airoha_metadata_dst_free(struct airoha_gdm_port *port)
  	}
  }
  
@@ -125,10 +125,16 @@ index faca939053e3..ede4f552896f 100644
 +	}
 +}
 +
++static void airoha_mac_link_down(struct phylink_config *config, unsigned int mode,
++				 phy_interface_t interface)
++{
++}
++
 +static const struct phylink_mac_ops airoha_phylink_ops = {
 +	.mac_select_pcs = airoha_phylink_mac_select_pcs,
 +	.mac_config = airoha_mac_config,
 +	.mac_link_up = airoha_mac_link_up,
++	.mac_link_down = airoha_mac_link_down,
 +};
 +
 +static int airoha_setup_phylink(struct net_device *dev)
