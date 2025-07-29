@@ -84,7 +84,7 @@ index 10fb0dcdc88b..54c0462c0dee 100644
 +	}
 +
 +	/* Simulate rate with every divisor supported */
-+	for (; tmp_div_val < BIT(desc->div_bits) - 1; tmp_div_val++) {
++	for (; tmp_div_val < BIT(desc->div_bits); tmp_div_val++) {
 +		int div = (tmp_div_val + desc->div_offset) * desc->div_step;
 +
 +		tmp_base_val = en75xx_get_base_val_for_rate(desc, div,
@@ -93,7 +93,7 @@ index 10fb0dcdc88b..54c0462c0dee 100644
 +			goto exit;
 +	}
 +
-+	if (tmp_div_val == BIT(desc->div_bits) - 1) {
++	if (tmp_div_val == BIT(desc->div_bits)) {
 +		pr_err("Invalid rate for clock %s\n",
 +		       desc->name);
 +		return -EINVAL;
