@@ -86,7 +86,7 @@ index faca939053e3..ede4f552896f 100644
  static int airoha_metadata_dst_alloc(struct airoha_gdm_port *port)
  {
  	int i;
-@@ -2417,6 +2451,97 @@ static void airoha_metadata_dst_free(struct airoha_gdm_port *port)
+@@ -2417,6 +2451,99 @@ static void airoha_metadata_dst_free(struct airoha_gdm_port *port)
  	}
  }
  
@@ -164,6 +164,8 @@ index faca939053e3..ede4f552896f 100644
 +	__set_bit(PHY_INTERFACE_MODE_2500BASEX,
 +		  port->phylink_config.supported_interfaces);
 +	__set_bit(PHY_INTERFACE_MODE_USXGMII,
++		  port->phylink_config.supported_interfaces);
++	__set_bit(PHY_INTERFACE_MODE_10GBASER,
 +		  port->phylink_config.supported_interfaces);
 +
 +	port->pcs = airoha_pcs_create(&dev->dev);

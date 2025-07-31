@@ -1,7 +1,7 @@
-From 05e5ffa593ec11729765892af4a6448602e348da Mon Sep 17 00:00:00 2001
+From 892d3d8488b4c0af04904dafcb3b75d3ea9b4816 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 17 Jan 2025 12:40:32 +0100
-Subject: [PATCH 2/6] net: pcs: airoha: add PCS driver for Airoha SoC
+Subject: [PATCH 1/5] net: pcs: airoha: add PCS driver for Airoha SoC
 
 Add PCS driver for Airoha SoC for ethernet SERDES and permit usage of
 external PHY or connected SFP cage. Supported modes are USXGMII, HSGMII
@@ -15,9 +15,9 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/pcs/Kconfig        |    6 +
  drivers/net/pcs/Makefile       |    1 +
- drivers/net/pcs/pcs-airoha.c   | 3068 ++++++++++++++++++++++++++++++++
+ drivers/net/pcs/pcs-airoha.c   | 3110 ++++++++++++++++++++++++++++++++
  include/linux/pcs/pcs-airoha.h |    9 +
- 4 files changed, 3084 insertions(+)
+ 4 files changed, 3126 insertions(+)
  create mode 100644 drivers/net/pcs/pcs-airoha.c
  create mode 100644 include/linux/pcs/pcs-airoha.h
 
@@ -52,10 +52,10 @@ index 4f7920618b90..0f82db009b65 100644
  obj-$(CONFIG_PCS_XPCS)		+= pcs_xpcs.o
 diff --git a/drivers/net/pcs/pcs-airoha.c b/drivers/net/pcs/pcs-airoha.c
 new file mode 100644
-index 000000000000..c0da8125a86c
+index 000000000000..4e6c0815a08f
 --- /dev/null
 +++ b/drivers/net/pcs/pcs-airoha.c
-@@ -0,0 +1,3069 @@
+@@ -0,0 +1,3110 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -2471,6 +2471,40 @@ index 000000000000..c0da8125a86c
 +	phylink_decode_usxgmii_word(state, lpa);
 +}
 +
++static void airoha_pcs_get_state_10gbaser(struct airoha_pcs_priv *priv,
++					  struct phylink_link_state *state)
++{
++	u32 status, curr_mode;
++
++	/* Toggle AN Status */
++	regmap_set_bits(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_CONTROL_6,
++			AIROHA_PCS_USXGMII_TOG_PCS_AUTONEG_STS);
++	regmap_clear_bits(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_CONTROL_6,
++			  AIROHA_PCS_USXGMII_TOG_PCS_AUTONEG_STS);
++
++	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_STUS_1, &status);
++	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_STATS_0, &curr_mode);
++
++	state->link = !!(status & AIROHA_PCS_USXGMII_RX_LINK_STUS);
++
++	switch (curr_mode & AIROHA_PCS_USXGMII_CUR_USXGMII_MODE) {
++	case AIROHA_PCS_USXGMII_CUR_USXGMII_MODE_10G:
++		state->speed = SPEED_10000;
++		break;
++	case AIROHA_PCS_USXGMII_CUR_USXGMII_MODE_5G:
++		state->speed = SPEED_5000;
++		break;
++	case AIROHA_PCS_USXGMII_CUR_USXGMII_MODE_2_5G:
++		state->speed = SPEED_2500;
++		break;
++	default:
++		state->speed = SPEED_UNKNOWN;
++		return;
++	}
++
++	state->duplex = DUPLEX_FULL;
++}
++
 +static void airoha_pcs_get_state(struct phylink_pcs *pcs,
 +				 struct phylink_link_state *state)
 +{
@@ -2486,8 +2520,10 @@ index 000000000000..c0da8125a86c
 +		airoha_pcs_get_state_hsgmii(priv, state);
 +		break;
 +	case PHY_INTERFACE_MODE_USXGMII:
-+	case PHY_INTERFACE_MODE_10GBASER:
 +		airoha_pcs_get_state_usxgmii(priv, state);
++		break;
++	case PHY_INTERFACE_MODE_10GBASER:
++		airoha_pcs_get_state_10gbaser(priv, state);
 +		break;
 +	default:
 +		return;
@@ -2543,9 +2579,14 @@ index 000000000000..c0da8125a86c
 +	 */
 +	if (interface == PHY_INTERFACE_MODE_USXGMII ||
 +	    interface == PHY_INTERFACE_MODE_10GBASER) {
-+		regmap_set_bits(priv->usxgmii_pcs,
-+				AIROHA_PCS_USXGMII_PCS_AN_CONTROL_0,
-+				AIROHA_PCS_USXGMII_AN_ENABLE);
++		if (interface == PHY_INTERFACE_MODE_USXGMII)
++			regmap_set_bits(priv->usxgmii_pcs,
++					AIROHA_PCS_USXGMII_PCS_AN_CONTROL_0,
++					AIROHA_PCS_USXGMII_AN_ENABLE);
++		else
++			regmap_clear_bits(priv->usxgmii_pcs,
++					  AIROHA_PCS_USXGMII_PCS_AN_CONTROL_0,
++					  AIROHA_PCS_USXGMII_AN_ENABLE);
 +	}
 +
 +	/* Clear any force bit that my be set by bootloader */
