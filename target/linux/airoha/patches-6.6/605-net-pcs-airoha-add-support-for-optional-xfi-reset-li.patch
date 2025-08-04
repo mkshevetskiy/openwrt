@@ -1,7 +1,7 @@
-From 813f97815b632dae7e1d5e7328df2fa6202ef8d5 Mon Sep 17 00:00:00 2001
+From 07338e7dfd2253e87feadb8e271e19beee6e45ac Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Sat, 26 Jul 2025 22:58:10 +0200
-Subject: [PATCH 5/6] net: pcs: airoha: add support for optional xfi reset line
+Subject: [PATCH 6/7] net: pcs: airoha: add support for optional xfi reset line
 
 On Airoha AN7583 there is a dedicated reset line for the PON XFI Serdes.
 This is needed to permit changing the WAN sel register or the system
@@ -12,33 +12,26 @@ configuration of the PON Serdes.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- drivers/net/pcs/pcs-airoha.c | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
+ drivers/net/pcs/airoha/pcs-airoha-common.c | 12 ++++++++++++
+ drivers/net/pcs/airoha/pcs-airoha.h        |  1 +
+ 2 files changed, 13 insertions(+)
 
-diff --git a/drivers/net/pcs/pcs-airoha.c b/drivers/net/pcs/pcs-airoha.c
-index 954cb472051d..1849fc9b91a1 100644
---- a/drivers/net/pcs/pcs-airoha.c
-+++ b/drivers/net/pcs/pcs-airoha.c
-@@ -1177,6 +1177,7 @@ struct airoha_pcs_priv {
- 	struct regmap *xfi_pma;
- 	struct regmap *xfi_ana;
- 
-+	struct reset_control *xfi_rst;
- 	struct reset_control_bulk_data rsts[AIROHA_PCS_MAX_NUM_RSTS];
- };
- 
-@@ -1267,6 +1268,10 @@ static int airoha_pcs_setup_scu(struct airoha_pcs_priv *priv,
- {
+diff --git a/drivers/net/pcs/airoha/pcs-airoha-common.c b/drivers/net/pcs/airoha/pcs-airoha-common.c
+index b4f84b85e7aa..8eaf5974084e 100644
+--- a/drivers/net/pcs/airoha/pcs-airoha-common.c
++++ b/drivers/net/pcs/airoha/pcs-airoha-common.c
+@@ -82,6 +82,10 @@ static int airoha_pcs_setup_scu(struct airoha_pcs_priv *priv,
+ 	const struct airoha_pcs_match_data *data = priv->data;
  	int ret;
  
 +	ret = reset_control_assert(priv->xfi_rst);
 +	if (ret)
 +		return ret;
 +
- 	switch (priv->data->port_type) {
+ 	switch (data->port_type) {
  	case AIROHA_PCS_ETH:
  		airoha_pcs_setup_scu_eth(priv, interface);
-@@ -1276,6 +1281,10 @@ static int airoha_pcs_setup_scu(struct airoha_pcs_priv *priv,
+@@ -91,6 +95,10 @@ static int airoha_pcs_setup_scu(struct airoha_pcs_priv *priv,
  		break;
  	}
  
@@ -49,7 +42,7 @@ index 954cb472051d..1849fc9b91a1 100644
  	/* TODO better handle reset from MAC */
  	ret = reset_control_bulk_assert(ARRAY_SIZE(priv->rsts),
  					priv->rsts);
-@@ -5687,6 +5696,10 @@ static int airoha_pcs_probe(struct platform_device *pdev)
+@@ -989,6 +997,10 @@ static int airoha_pcs_probe(struct platform_device *pdev)
  	if (ret)
  		return dev_err_probe(dev, ret, "failed to get bulk reset lines\n");
  
@@ -60,6 +53,18 @@ index 954cb472051d..1849fc9b91a1 100644
  	platform_set_drvdata(pdev, priv);
  
  	return 0;
+diff --git a/drivers/net/pcs/airoha/pcs-airoha.h b/drivers/net/pcs/airoha/pcs-airoha.h
+index 677ad58dd250..65cc535931f1 100644
+--- a/drivers/net/pcs/airoha/pcs-airoha.h
++++ b/drivers/net/pcs/airoha/pcs-airoha.h
+@@ -1173,6 +1173,7 @@ struct airoha_pcs_priv {
+ 	struct regmap *xfi_pma;
+ 	struct regmap *xfi_ana;
+ 
++	struct reset_control *xfi_rst;
+ 	struct reset_control_bulk_data rsts[AIROHA_PCS_MAX_NUM_RSTS];
+ };
+ 
 -- 
 2.50.0
 
