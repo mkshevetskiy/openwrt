@@ -202,7 +202,7 @@
 +	u32 hif1_ofs = 0, phy_addr;
 +	int i, err;
  
- 	err = airoha_npu_wlan_send_msg(npu, 0,
+ 	err = mt76_npu_send_msg(npu, 0,
  				       WLAN_FUNC_SET_WAIT_PCIE_PORT_TYPE,
 -				       type, GFP_ATOMIC);
 +				       dev->mt76.mmio.npu_type, GFP_ATOMIC);
@@ -225,7 +225,7 @@
 -			addr += MT_RXQ_RING_BASE(MT_RXQ_RRO_BAND0) + 0x80;
 +			phy_addr += MT_RXQ_RING_BASE(MT_RXQ_RRO_BAND0) + 0x80;
  
- 		err = airoha_npu_wlan_send_msg(npu, i,
+ 		err = mt76_npu_send_msg(npu, i,
  					       WLAN_FUNC_SET_WAIT_PCIE_ADDR,
 -					       addr, GFP_ATOMIC);
 +					       phy_addr, GFP_ATOMIC);
@@ -245,7 +245,7 @@
 -			addr += MT_TXQ_RING_BASE(0) + 0x120;
 +			phy_addr += MT_TXQ_RING_BASE(0) + 0x120;
  
- 		err = airoha_npu_wlan_send_msg(npu, i,
+ 		err = mt76_npu_send_msg(npu, i,
  					       WLAN_FUNC_SET_WAIT_TX_RING_PCIE_ADDR,
 -					       addr, GFP_ATOMIC);
 +					       phy_addr, GFP_ATOMIC);
@@ -258,7 +258,7 @@
  
 -	/*rxdmad_c ring*/
 +	phy_addr = dev->mt76.mmio.phy_addr + MT_RXQ_RRO_AP_RING_BASE;
- 	err = airoha_npu_wlan_send_msg(npu, 9, WLAN_FUNC_SET_WAIT_PCIE_ADDR,
+ 	err = mt76_npu_send_msg(npu, 9, WLAN_FUNC_SET_WAIT_PCIE_ADDR,
 -				       paddr + MT_RXQ_RRO_AP_RING_BASE,
 -				       GFP_ATOMIC);
 +				       phy_addr, GFP_ATOMIC);
@@ -270,7 +270,7 @@
  	}
  
 +	phy_addr = dev->mt76.mmio.phy_addr + MT_RRO_ACK_SN_CTRL;
- 	err = airoha_npu_wlan_send_msg(npu, 2,
+ 	err = mt76_npu_send_msg(npu, 2,
  				       WLAN_FUNC_SET_WAIT_TX_RING_PCIE_ADDR,
 -				       paddr + MT_RRO_ACK_SN_CTRL, GFP_ATOMIC);
 +				       phy_addr, GFP_ATOMIC);
@@ -291,14 +291,14 @@
 +	phys_addr_t phy_addr = dev->mt76.mmio.phy_addr;
  	int err;
  
- 	err = airoha_npu_wlan_send_msg(npu, 0,
+ 	err = mt76_npu_send_msg(npu, 0,
 @@ -210,9 +205,9 @@ static int mt7996_npu_rx_event_init(stru
  		return err;
  	}
  
 -	paddr += MT_RXQ_RING_BASE(MT_RXQ_MAIN_WA) + 0x20;
 +	phy_addr += MT_RXQ_RING_BASE(MT_RXQ_MAIN_WA) + 0x20;
- 	err = airoha_npu_wlan_send_msg(npu, 10, WLAN_FUNC_SET_WAIT_PCIE_ADDR,
+ 	err = mt76_npu_send_msg(npu, 10, WLAN_FUNC_SET_WAIT_PCIE_ADDR,
 -				       paddr, GFP_ATOMIC);
 +				       phy_addr, GFP_ATOMIC);
  	if (err)
@@ -350,14 +350,14 @@
 +	if(!npu)
 +		goto unlock;
 +
-+	err = airoha_npu_wlan_send_msg(npu, 4,
++	err = mt76_npu_send_msg(npu, 4,
 +				       WLAN_FUNC_SET_WAIT_INODE_TXRX_REG_ADDR,
 +				       0, GFP_ATOMIC);
 +	if (err)
 +		goto unlock;
 +
 +	for (i = 0; i < 10; i++) {
-+		err = airoha_npu_wlan_get_msg(npu, 3,
++		err = mt76_npu_get_msg(npu, 3,
 +					      WLAN_FUNC_GET_WAIT_NPU_INFO,
 +					      &info, GFP_ATOMIC);
 +		if (err)
@@ -370,7 +370,7 @@
 +	}
 +
 +	if (!err)
-+		err = airoha_npu_wlan_send_msg(npu, 6,
++		err = mt76_npu_send_msg(npu, 6,
 +					       WLAN_FUNC_SET_WAIT_INODE_TXRX_REG_ADDR,
 +					       0, GFP_ATOMIC);
 +unlock:
