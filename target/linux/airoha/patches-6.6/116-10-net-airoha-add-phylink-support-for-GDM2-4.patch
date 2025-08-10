@@ -55,12 +55,14 @@ index faca939053e3..ede4f552896f 100644
  	netif_tx_start_all_queues(dev);
  	err = airoha_set_vip_for_gdm_port(port, true);
  	if (err)
-@@ -1577,6 +1594,9 @@ static int airoha_dev_stop(struct net_device *dev)
+@@ -1577,6 +1594,11 @@ static int airoha_dev_stop(struct net_device *dev)
  		}
  	}
  
-+	if (airhoa_is_phy_external(port))
++	if (airhoa_is_phy_external(port)) {
 +		phylink_stop(port->phylink);
++		phylink_disconnect_phy(port->phylink);
++	}
 +
  	return 0;
  }
