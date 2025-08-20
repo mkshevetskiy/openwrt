@@ -540,6 +540,13 @@
 			status = "disabled";
 		};
 
+		crypto@1e004000 {
+			compatible = "inside-secure,safexcel-eip93ies";
+			reg = <0x0 0x1fb70000 0x0 0x1000>;
+
+			interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
 		pciephy: phy@1fa5a000 {
 			compatible = "airoha,an7583-pcie-phy";
 			reg = <0x0 0x1fc7f000 0x0 0xfff>,
