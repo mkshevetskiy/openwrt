@@ -1,4 +1,4 @@
-From 5491c586f90ac0063c6332061236d36fe1eeecf0 Mon Sep 17 00:00:00 2001
+From 3da8e76042552361844ae52c8a8d88e2e50d1153 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Thu, 10 Jul 2025 22:23:49 +0200
 Subject: [PATCH 1/2] net: phy: mediatek: add calibration logic for AN7581
@@ -23,10 +23,10 @@ for TX Amp compensation.
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/phy/mediatek/Makefile     |    2 +
- drivers/net/phy/mediatek/an7581.c     |  339 +++++++
- drivers/net/phy/mediatek/mtk-ge-soc.c | 1185 ++++++++++++++++++++++++-
+ drivers/net/phy/mediatek/an7581.c     |  341 ++++++++
+ drivers/net/phy/mediatek/mtk-ge-soc.c | 1164 ++++++++++++++++++++++++-
  drivers/net/phy/mediatek/mtk.h        |   54 ++
- 4 files changed, 1567 insertions(+), 13 deletions(-)
+ 4 files changed, 1548 insertions(+), 13 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/an7581.c
 
 diff --git a/drivers/net/phy/mediatek/Makefile b/drivers/net/phy/mediatek/Makefile
@@ -41,7 +41,7 @@ index ac57ecc799fc..3f28cc176959 100644
 +mtk-ge-soc-objs				+= an7581.o
 diff --git a/drivers/net/phy/mediatek/an7581.c b/drivers/net/phy/mediatek/an7581.c
 new file mode 100644
-index 000000000000..27cce822c0c7
+index 000000000000..78f941966773
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/an7581.c
 @@ -0,0 +1,340 @@
@@ -386,7 +386,7 @@ index 000000000000..27cce822c0c7
 +	return 0;
 +}
 diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.c b/drivers/net/phy/mediatek/mtk-ge-soc.c
-index cd09fbf92ef2..3ab30a5ac94c 100644
+index cd09fbf92ef2..880bc5f7d431 100644
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
 @@ -21,6 +21,7 @@
@@ -766,7 +766,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  static int tx_amp_fill_result(struct phy_device *phydev, u16 *buf)
  {
  	const int vals_9481[16] = { 10, 6, 6, 10,
-@@ -582,6 +868,202 @@ static int tx_amp_cal_efuse(struct phy_device *phydev, u32 *buf)
+@@ -582,6 +868,181 @@ static int tx_amp_cal_efuse(struct phy_device *phydev, u32 *buf)
  	return 0;
  }
  
@@ -786,7 +786,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +	/* BG voltage output */
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND2, 0x100, 0xc000);
 +
-+	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, 0x145, 0x1010);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x145, 0x1010);
 +
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
 +		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
@@ -898,50 +898,29 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +
 +	if (ret < 0) {
 +		phydev_err(phydev, "TX AMP calibration failed.\n");
-+		return -EINVAL;
-+	}
-+
-+	if (zcal_ctrl == 0 ||
-+	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
-+		u8 val_tst, val_hbt;
-+
-+		phydev_err(phydev, "TX AMP SW calibration saturation. Defaulting to %x.\n",
-+			   zcal_ctrl);
-+
-+		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg,
-+			       mask_gbe | mask_tbt,
-+			       (0x20 << __ffs(mask_gbe)) |
-+			       (0x10 << __ffs(mask_tbt)));
-+
-+		if (txg_calen_x == PAIR_A) {
-+			val_hbt = 0x60;
-+			val_tst = 0x10;
-+		} else if (txg_calen_x == PAIR_B) {
-+			if (phydev == phydev_p0)
-+				val_hbt = 0x24;
-+			else
-+				val_hbt = 0x28;
-+			val_tst = 0x20;
-+		} else {
-+			val_hbt = 0x4;
-+			val_tst = 0x20;
-+		}
-+
-+		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg_100,
-+			       mask_hbt | mask_tst,
-+			       (val_hbt << __ffs(mask_hbt)) |
-+			       (val_tst << __ffs(mask_tst)));
-+	} else {
 +		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg,
 +			       mask_gbe | mask_tbt,
 +			       (zcal_ctrl << __ffs(mask_gbe)) |
 +			       (zcal_ctrl << __ffs(mask_tbt)));
 +
-+		phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg_100,
-+			       mask_hbt | mask_tst,
-+			       (zcal_ctrl << __ffs(mask_hbt)) |
-+			       (zcal_ctrl << __ffs(mask_tst)));
++		return -EINVAL;
 +	}
++
++	if (zcal_ctrl == 0 ||
++	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK))
++		phydev_warn(phydev, "TX AMP SW calibration saturation.\n");
++
++	phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg,
++			mask_gbe | mask_tbt,
++			(zcal_ctrl << __ffs(mask_gbe)) |
++			(zcal_ctrl << __ffs(mask_tbt)));
++
++	phy_modify_mmd(phydev, MDIO_MMD_VEND1, reg_100,
++			mask_hbt | mask_tst,
++			(zcal_ctrl << __ffs(mask_hbt)) |
++			(zcal_ctrl << __ffs(mask_tst)));
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x100, 0x0);
 +
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_A, 0);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_B, 0);
@@ -969,7 +948,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  static int tx_r50_fill_result(struct phy_device *phydev, u16 tx_r50_cal_val,
  			      u8 txg_calen_x)
  {
-@@ -641,6 +1123,168 @@ static int tx_r50_cal_efuse(struct phy_device *phydev, u32 *buf,
+@@ -641,6 +1102,166 @@ static int tx_r50_cal_efuse(struct phy_device *phydev, u32 *buf,
  	return 0;
  }
  
@@ -989,17 +968,17 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +	/* BG voltage output */
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND2, 0x100, 0xc000);
 +
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
-+		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
-+	/* select 1V */
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6, 0x10);
-+
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
 +		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
 +	/* select 1V */
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6, 0x10);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
++		      MTK_PHY_RG_CAL_CKINV | MTK_PHY_RG_ANA_CALEN);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
++	/* select 1V */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6, 0x10);
 +
 +	/* Force 1G full duplex for calibration */
 +	bmcr_tmp = phy_read(phydev, MII_BMCR);
@@ -1077,13 +1056,10 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +	}
 +
 +	if (zcal_ctrl == 0 ||
-+	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK)) {
-+		zcal_ctrl = 32;
-+		phydev_err(phydev, "TX r50 SW calibration saturation. Defaulting to %x.\n",
-+			   zcal_ctrl);
-+	} else {
-+		zcal_ctrl = shared->r50_cal_tbl[zcal_ctrl];
-+	}
++	    zcal_ctrl == FIELD_MAX(MTK_PHY_RG_REXT_ZCAL_CTRL_MASK))
++		phydev_warn(phydev, "TX r50 SW calibration saturation.\n");
++
++	zcal_ctrl = shared->r50_cal_tbl[zcal_ctrl];
 +
 +	switch (txg_calen_x) {
 +	case PAIR_A:
@@ -1115,6 +1091,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +	}
 +
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
 +
 +	/* Enable tx slew control */
@@ -1138,7 +1115,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  static int tx_vcm_cal_sw(struct phy_device *phydev, u8 rg_txreserve_x)
  {
  	u8 lower_idx, upper_idx, txreserve_val;
-@@ -804,6 +1448,41 @@ static int tx_vcm_cal_sw(struct phy_device *phydev, u8 rg_txreserve_x)
+@@ -804,6 +1426,44 @@ static int tx_vcm_cal_sw(struct phy_device *phydev, u8 rg_txreserve_x)
  	return ret;
  }
  
@@ -1174,13 +1151,16 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x171,
 +			   BIT(8) | BIT(7));
 +
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6,
++		      0x1);
++
 +	return 0;
 +}
 +
  static void mt798x_phy_common_finetune(struct phy_device *phydev)
  {
  	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_52B5);
-@@ -1081,11 +1760,43 @@ static int cal_sw(struct phy_device *phydev, enum CAL_ITEM cal_item,
+@@ -1081,11 +1741,43 @@ static int cal_sw(struct phy_device *phydev, enum CAL_ITEM cal_item,
  	int ret;
  
  	for (pair_n = start_pair; pair_n <= end_pair; pair_n++) {
@@ -1225,7 +1205,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  		default:
  			return -EINVAL;
  		}
-@@ -1420,8 +2131,10 @@ static int mt7981_phy_probe(struct phy_device *phydev)
+@@ -1420,8 +2112,10 @@ static int mt7981_phy_probe(struct phy_device *phydev)
  
  static int an7581_phy_probe(struct phy_device *phydev)
  {
@@ -1236,7 +1216,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  
  	/* Toggle pinctrl to enable PHY LED */
  	pinctrl = devm_pinctrl_get_select(&phydev->mdio.dev, "gbe-led");
-@@ -1429,15 +2142,459 @@ static int an7581_phy_probe(struct phy_device *phydev)
+@@ -1429,15 +2123,456 @@ static int an7581_phy_probe(struct phy_device *phydev)
  		dev_err(&phydev->mdio.bus->dev,
  			"Failed to setup PHY LED pinctrl\n");
  
@@ -1294,9 +1274,6 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +	ret = start_cal(phydev, RX_OFFSET, SW_M, NO_PAIR, NO_PAIR, NULL);
 +	if (ret)
 +		return ret;
-+
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6,
-+		      0x1);
 +
 +	/* Gating, short with other pair */
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x15, 0x0);
@@ -1417,7 +1394,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
 +
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x10,
 +			GENMASK(20, 15),
-+			FIELD_PREP(GENMASK(20, 15), 0x2));
++			FIELD_PREP(GENMASK(20, 15), 0x4));
 +
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x11,
 +			GENMASK(23, 17) | GENMASK(15, 10) | GENMASK(7, 2),
@@ -1696,7 +1673,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  static int an7581_phy_led_polarity_set(struct phy_device *phydev, int index,
  				       unsigned long modes)
  {
-@@ -1508,6 +2664,7 @@ static struct phy_driver mtk_socphy_driver[] = {
+@@ -1508,6 +2643,7 @@ static struct phy_driver mtk_socphy_driver[] = {
  	{
  		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_AN7581),
  		.name		= "Airoha AN7581 PHY",
@@ -1704,7 +1681,7 @@ index cd09fbf92ef2..3ab30a5ac94c 100644
  		.probe		= an7581_phy_probe,
  		.led_blink_set	= mt798x_phy_led_blink_set,
  		.led_brightness_set = mt798x_phy_led_brightness_set,
-@@ -1515,6 +2672,8 @@ static struct phy_driver mtk_socphy_driver[] = {
+@@ -1515,6 +2651,8 @@ static struct phy_driver mtk_socphy_driver[] = {
  		.led_hw_control_set = mt798x_phy_led_hw_control_set,
  		.led_hw_control_get = mt798x_phy_led_hw_control_get,
  		.led_polarity_set = an7581_phy_led_polarity_set,
