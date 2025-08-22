@@ -1,0 +1,362 @@
+From 9136b52bfac08d7c0e3e4efe3bf1dc2e9d7b4e70 Mon Sep 17 00:00:00 2001
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Fri, 22 Aug 2025 14:59:02 +0200
+Subject: [PATCH] net: mediatek: move MT7531 mdio to dedicated driver
+
+In preparation for support of MDIO on AN7581, move the MT7531 logic to a
+dedicated driver and permit usage of the mdio read/write function to the
+mtk_eth driver.
+
+Minor changes are required to mtk_eth for this change as the dedicated
+MDIO driver only needs info of the GSW register and nothing else.
+
+This permits Airoha driver to make use of DM_MDIO to bind for the MT7531
+driver that have the same exact register.
+
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+---
+ drivers/net/Kconfig       |   4 ++
+ drivers/net/Makefile      |   1 +
+ drivers/net/mdio-mt7531.c | 140 ++++++++++++++++++++++++++++++++++++++
+ drivers/net/mdio-mt7531.h |   9 +++
+ drivers/net/mtk_eth.c     |  70 ++++---------------
+ 5 files changed, 166 insertions(+), 58 deletions(-)
+ create mode 100644 drivers/net/mdio-mt7531.c
+ create mode 100644 drivers/net/mdio-mt7531.h
+
+diff --git a/drivers/net/Kconfig b/drivers/net/Kconfig
+index b2d7b499766..d2e21698e08 100644
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -886,11 +886,15 @@ config TSEC_ENET
+ 	  This driver implements support for the (Enhanced) Three-Speed
+ 	  Ethernet Controller found on Freescale SoCs.
+ 
++config MDIO_MT7531
++	bool
++
+ config MEDIATEK_ETH
+ 	bool "MediaTek Ethernet GMAC Driver"
+ 	select PHYLIB
+ 	select DM_GPIO
+ 	select DM_RESET
++	select MDIO_MT7531
+ 	help
+ 	  This Driver support MediaTek Ethernet GMAC
+ 	  Say Y to enable support for the MediaTek Ethernet GMAC.
+diff --git a/drivers/net/Makefile b/drivers/net/Makefile
+index dc3404519d6..673c19969d3 100644
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -56,6 +56,7 @@ obj-$(CONFIG_LITEETH) += liteeth.o
+ obj-$(CONFIG_MACB) += macb.o
+ obj-$(CONFIG_MCFFEC) += mcffec.o mcfmii.o
+ obj-$(CONFIG_MDIO_IPQ4019) += mdio-ipq4019.o
++obj-$(CONFIG_MDIO_MT7531) += mdio-mt7531.o
+ obj-$(CONFIG_MDIO_MUX_I2CREG) += mdio_mux_i2creg.o
+ obj-$(CONFIG_MDIO_MUX_MESON_G12A) += mdio_mux_meson_g12a.o
+ obj-$(CONFIG_MDIO_MUX_MESON_GXL) += mdio_mux_meson_gxl.o
+diff --git a/drivers/net/mdio-mt7531.c b/drivers/net/mdio-mt7531.c
+new file mode 100644
+index 00000000000..4772c9b5407
+--- /dev/null
++++ b/drivers/net/mdio-mt7531.c
+@@ -0,0 +1,140 @@
++// SPDX-License-Identifier: GPL-2.0+
++
++#include <asm/io.h>
++#include <dm.h>
++#include <linux/bitfield.h>
++#include <linux/iopoll.h>
++#include <miiphy.h>
++
++#define MT7531_PHY_IAC			0x701c
++#define   MT7531_PHY_ACS_ST		BIT(31)
++#define   MT7531_MDIO_REG_ADDR_CL22	GENMASK(29, 25)
++#define   MT7531_MDIO_DEV_ADDR		MT7531_MDIO_REG_ADDR_CL22
++#define   MT7531_MDIO_PHY_ADDR		GENMASK(24, 20)
++#define   MT7531_MDIO_CMD		GENMASK(19, 18)
++#define   MT7531_MDIO_CMD_READ_CL45	FIELD_PREP_CONST(MT7531_MDIO_CMD, 0x3)
++#define   MT7531_MDIO_CMD_READ_CL22	FIELD_PREP_CONST(MT7531_MDIO_CMD, 0x2)
++#define   MT7531_MDIO_CMD_WRITE		FIELD_PREP_CONST(MT7531_MDIO_CMD, 0x1)
++#define   MT7531_MDIO_CMD_ADDR		FIELD_PREP_CONST(MT7531_MDIO_CMD, 0x0)
++#define   MT7531_MDIO_ST		GENMASK(17, 16)
++#define   MT7531_MDIO_ST_CL22		FIELD_PREP_CONST(MT7531_MDIO_ST, 0x1)
++#define   MT7531_MDIO_ST_CL45		FIELD_PREP_CONST(MT7531_MDIO_ST, 0x0)
++#define   MT7531_MDIO_RW_DATA		GENMASK(15, 0)
++#define   MT7531_MDIO_REG_ADDR_CL45	MT7531_MDIO_RW_DATA
++
++#define MT7531_MDIO_TIMEOUT		100000
++#define MT7531_MDIO_SLEEP		20
++
++struct mt7531_mdio_priv {
++	phys_addr_t switch_regs;
++};
++
++static int mt7531_mdio_wait_busy(struct mt7531_mdio_priv *priv)
++{
++	unsigned int busy;
++
++	return readl_poll_sleep_timeout(priv->switch_regs + MT7531_PHY_IAC,
++					busy, (busy & MT7531_PHY_ACS_ST) == 0,
++					MT7531_MDIO_SLEEP, MT7531_MDIO_TIMEOUT);
++}
++
++int mt7531_mdio_read(struct udevice *dev, int addr, int devad, int reg)
++{
++	struct mt7531_mdio_priv *priv = dev_get_priv(dev);
++	u32 val;
++
++	if (devad != MDIO_DEVAD_NONE) {
++		if (mt7531_mdio_wait_busy(priv))
++			return -ETIMEDOUT;
++
++		val = MT7531_PHY_ACS_ST |
++		      MT7531_MDIO_ST_CL45 | MT7531_MDIO_CMD_ADDR |
++		      FIELD_PREP(MT7531_MDIO_PHY_ADDR, addr) |
++		      FIELD_PREP(MT7531_MDIO_DEV_ADDR, devad) |
++		      FIELD_PREP(MT7531_MDIO_REG_ADDR_CL45, reg);
++
++		writel(val, priv->switch_regs + MT7531_PHY_IAC);
++	}
++
++	if (mt7531_mdio_wait_busy(priv))
++		return -ETIMEDOUT;
++
++	val = MT7531_PHY_ACS_ST | FIELD_PREP(MT7531_MDIO_PHY_ADDR, addr);
++	if (devad != MDIO_DEVAD_NONE)
++		val |= MT7531_MDIO_ST_CL45 | MT7531_MDIO_CMD_READ_CL45 |
++		       FIELD_PREP(MT7531_MDIO_DEV_ADDR, devad);
++	else
++		val |= MT7531_MDIO_ST_CL22 | MT7531_MDIO_CMD_READ_CL22 |
++		       FIELD_PREP(MT7531_MDIO_REG_ADDR_CL22, reg);
++
++	writel(val, priv->switch_regs + MT7531_PHY_IAC);
++
++	if (mt7531_mdio_wait_busy(priv))
++		return -ETIMEDOUT;
++
++	val = readl(priv->switch_regs + MT7531_PHY_IAC);
++	return val & MT7531_MDIO_RW_DATA;
++}
++
++int mt7531_mdio_write(struct udevice *dev, int addr, int devad,
++		      int reg, u16 value)
++{
++	struct mt7531_mdio_priv *priv = dev_get_priv(dev);
++	u32 val;
++
++	if (devad != MDIO_DEVAD_NONE) {
++		if (mt7531_mdio_wait_busy(priv))
++			return -ETIMEDOUT;
++
++		val = MT7531_PHY_ACS_ST |
++		      MT7531_MDIO_ST_CL45 | MT7531_MDIO_CMD_ADDR |
++		      FIELD_PREP(MT7531_MDIO_PHY_ADDR, addr) |
++		      FIELD_PREP(MT7531_MDIO_DEV_ADDR, devad) |
++		      FIELD_PREP(MT7531_MDIO_REG_ADDR_CL45, reg);
++
++		writel(val, priv->switch_regs + MT7531_PHY_IAC);
++	}
++
++	if (mt7531_mdio_wait_busy(priv))
++		return -ETIMEDOUT;
++
++	val = MT7531_PHY_ACS_ST | FIELD_PREP(MT7531_MDIO_PHY_ADDR, addr) |
++	      MT7531_MDIO_CMD_WRITE | FIELD_PREP(MT7531_MDIO_RW_DATA, value);
++	if (devad != MDIO_DEVAD_NONE)
++		val |= MT7531_MDIO_ST_CL45 |
++		       FIELD_PREP(MT7531_MDIO_DEV_ADDR, devad);
++	else
++		val |= MT7531_MDIO_ST_CL22 |
++		       FIELD_PREP(MT7531_MDIO_REG_ADDR_CL22, reg);
++
++	writel(val, priv->switch_regs + MT7531_PHY_IAC);
++
++	if (mt7531_mdio_wait_busy(priv))
++		return -ETIMEDOUT;
++
++	return 0;
++}
++
++static const struct mdio_ops mt7531_mdio_ops = {
++	.read = mt7531_mdio_read,
++	.write = mt7531_mdio_write,
++};
++
++static int mt7531_mdio_probe(struct udevice *dev)
++{
++	struct mt7531_mdio_priv *priv = dev_get_priv(dev);
++
++	priv->switch_regs = dev_read_addr(dev);
++	if (priv->switch_regs == FDT_ADDR_T_NONE)
++		return -EINVAL;
++
++	return 0;
++}
++
++U_BOOT_DRIVER(mt7531_mdio) = {
++	.name           = "mt7531-mdio",
++	.id             = UCLASS_MDIO,
++	.probe          = mt7531_mdio_probe,
++	.ops            = &mt7531_mdio_ops,
++	.priv_auto	  = sizeof(struct mt7531_mdio_priv),
++};
+diff --git a/drivers/net/mdio-mt7531.h b/drivers/net/mdio-mt7531.h
+new file mode 100644
+index 00000000000..ee096112f92
+--- /dev/null
++++ b/drivers/net/mdio-mt7531.h
+@@ -0,0 +1,9 @@
++// SPDX-License-Identifier: GPL-2.0+
++
++struct mt7531_mdio_priv {
++	phys_addr_t switch_regs;
++};
++
++int mt7531_mdio_read(struct udevice *dev, int addr, int devad, int reg);
++int mt7531_mdio_write(struct udevice *dev, int addr, int devad,
++		      int reg, u16 value);
+diff --git a/drivers/net/mtk_eth.c b/drivers/net/mtk_eth.c
+index 87e2e1d9cda..5bd160dae0a 100644
+--- a/drivers/net/mtk_eth.c
++++ b/drivers/net/mtk_eth.c
+@@ -29,6 +29,7 @@
+ #include <linux/printk.h>
+ 
+ #include "mtk_eth.h"
++#include "mdio-mt7531.h"
+ 
+ #define NUM_TX_DESC		24
+ #define NUM_RX_DESC		24
+@@ -125,6 +126,8 @@ struct mtk_eth_priv {
+ 	struct regmap *xfi_pll_regmap;
+ 	struct regmap *toprgu_regmap;
+ 
++	struct mt7531_mdio_priv priv;
++
+ 	struct mii_dev *mdio_bus;
+ 	int (*mii_read)(struct mtk_eth_priv *priv, u8 phy, u8 reg);
+ 	int (*mii_write)(struct mtk_eth_priv *priv, u8 phy, u8 reg, u16 val);
+@@ -432,44 +435,6 @@ static void mt753x_reg_rmw(struct mtk_eth_priv *priv, u32 reg, u32 clr,
+ 	mt753x_reg_write(priv, reg, val);
+ }
+ 
+-/* Indirect MDIO clause 22/45 access */
+-static int mt7531_mii_rw(struct mtk_eth_priv *priv, int phy, int reg, u16 data,
+-			 u32 cmd, u32 st)
+-{
+-	ulong timeout;
+-	u32 val, timeout_ms;
+-	int ret = 0;
+-
+-	val = (st << MDIO_ST_S) |
+-	      ((cmd << MDIO_CMD_S) & MDIO_CMD_M) |
+-	      ((phy << MDIO_PHY_ADDR_S) & MDIO_PHY_ADDR_M) |
+-	      ((reg << MDIO_REG_ADDR_S) & MDIO_REG_ADDR_M);
+-
+-	if (cmd == MDIO_CMD_WRITE || cmd == MDIO_CMD_ADDR)
+-		val |= data & MDIO_RW_DATA_M;
+-
+-	mt753x_reg_write(priv, MT7531_PHY_IAC, val | PHY_ACS_ST);
+-
+-	timeout_ms = 100;
+-	timeout = get_timer(0);
+-	while (1) {
+-		mt753x_reg_read(priv, MT7531_PHY_IAC, &val);
+-
+-		if ((val & PHY_ACS_ST) == 0)
+-			break;
+-
+-		if (get_timer(timeout) > timeout_ms)
+-			return -ETIMEDOUT;
+-	}
+-
+-	if (cmd == MDIO_CMD_READ || cmd == MDIO_CMD_READ_C45) {
+-		mt753x_reg_read(priv, MT7531_PHY_IAC, &val);
+-		ret = val & MDIO_RW_DATA_M;
+-	}
+-
+-	return ret;
+-}
+-
+ static int mt7531_mii_ind_read(struct mtk_eth_priv *priv, u8 phy, u8 reg)
+ {
+ 	u8 phy_addr;
+@@ -479,8 +444,8 @@ static int mt7531_mii_ind_read(struct mtk_eth_priv *priv, u8 phy, u8 reg)
+ 
+ 	phy_addr = MT753X_PHY_ADDR(priv->mt753x_phy_base, phy);
+ 
+-	return mt7531_mii_rw(priv, phy_addr, reg, 0, MDIO_CMD_READ,
+-			     MDIO_ST_C22);
++	return mt7531_mdio_read(&priv->mdio_priv, phy_addr, MDIO_DEVAD_NONE,
++				reg);
+ }
+ 
+ static int mt7531_mii_ind_write(struct mtk_eth_priv *priv, u8 phy, u8 reg,
+@@ -493,48 +458,36 @@ static int mt7531_mii_ind_write(struct mtk_eth_priv *priv, u8 phy, u8 reg,
+ 
+ 	phy_addr = MT753X_PHY_ADDR(priv->mt753x_phy_base, phy);
+ 
+-	return mt7531_mii_rw(priv, phy_addr, reg, val, MDIO_CMD_WRITE,
+-			     MDIO_ST_C22);
++	return mt7531_mdio_write(&priv->mdio_priv, phy_addr, MDIO_DEVAD_NONE,
++				 reg, val);
+ }
+ 
+ static int mt7531_mmd_ind_read(struct mtk_eth_priv *priv, u8 addr, u8 devad,
+ 			       u16 reg)
+ {
+ 	u8 phy_addr;
+-	int ret;
+ 
+ 	if (addr >= MT753X_NUM_PHYS)
+ 		return -EINVAL;
+ 
+ 	phy_addr = MT753X_PHY_ADDR(priv->mt753x_phy_base, addr);
+ 
+-	ret = mt7531_mii_rw(priv, phy_addr, devad, reg, MDIO_CMD_ADDR,
+-			    MDIO_ST_C45);
+-	if (ret)
+-		return ret;
+-
+-	return mt7531_mii_rw(priv, phy_addr, devad, 0, MDIO_CMD_READ_C45,
+-			     MDIO_ST_C45);
++	return mt7531_mdio_read(&priv->mdio_priv, phy_addr, devad,
++				reg);
+ }
+ 
+ static int mt7531_mmd_ind_write(struct mtk_eth_priv *priv, u8 addr, u8 devad,
+ 				u16 reg, u16 val)
+ {
+ 	u8 phy_addr;
+-	int ret;
+ 
+ 	if (addr >= MT753X_NUM_PHYS)
+ 		return 0;
+ 
+ 	phy_addr = MT753X_PHY_ADDR(priv->mt753x_phy_base, addr);
+ 
+-	ret = mt7531_mii_rw(priv, phy_addr, devad, reg, MDIO_CMD_ADDR,
+-			    MDIO_ST_C45);
+-	if (ret)
+-		return ret;
+-
+-	return mt7531_mii_rw(priv, phy_addr, devad, val, MDIO_CMD_WRITE,
+-			     MDIO_ST_C45);
++	return mt7531_mdio_write(&priv->mdio_priv, phy_addr, devad,
++				 reg, val);
+ }
+ 
+ static int mtk_mdio_read(struct mii_dev *bus, int addr, int devad, int reg)
+@@ -577,6 +530,7 @@ static int mtk_mdio_register(struct udevice *dev)
+ 		break;
+ 	case SW_MT7531:
+ 	case SW_MT7988:
++		priv->mdio_priv.switch_regs = priv->gsw_base;
+ 		priv->mii_read = mt7531_mii_ind_read;
+ 		priv->mii_write = mt7531_mii_ind_write;
+ 		priv->mmd_read = mt7531_mmd_ind_read;
+-- 
+2.50.0
+
