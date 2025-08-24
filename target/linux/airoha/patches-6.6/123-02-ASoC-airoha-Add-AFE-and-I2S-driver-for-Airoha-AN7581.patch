@@ -1,36 +1,67 @@
-From 8d5e14dd861705e120db132cef404d57146543e6 Mon Sep 17 00:00:00 2001
+From 9989af6ed0dba86f57ac4aa1574f9ce9b1e640af Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Thu, 31 Jul 2025 15:32:32 +0200
-Subject: [PATCH] ASoC: mediatek: Add AFE driver for Airoha AN7581
+Subject: [PATCH 2/3] ASoC: airoha: Add AFE and I2S driver for Airoha AN7581
 
 Add support for the Sound system present on Airoha AN7581 SoC. This is
 based on the mediatek AFE drivers.
 
+Also add the I2S driver to create an actual sound card for the AFE.
+
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- sound/soc/mediatek/Kconfig                    |  10 +
- sound/soc/mediatek/Makefile                   |   1 +
- sound/soc/mediatek/an7581/Makefile            |   7 +
- sound/soc/mediatek/an7581/an7581-afe-common.h |  35 ++
- sound/soc/mediatek/an7581/an7581-afe-pcm.c    | 455 ++++++++++++++++++
- sound/soc/mediatek/an7581/an7581-reg.h        |  29 ++
- 6 files changed, 537 insertions(+)
- create mode 100644 sound/soc/mediatek/an7581/Makefile
- create mode 100644 sound/soc/mediatek/an7581/an7581-afe-common.h
- create mode 100644 sound/soc/mediatek/an7581/an7581-afe-pcm.c
- create mode 100644 sound/soc/mediatek/an7581/an7581-reg.h
+ sound/soc/Kconfig                           |   1 +
+ sound/soc/Makefile                          |   1 +
+ sound/soc/airoha/Kconfig                    |  19 +
+ sound/soc/airoha/Makefile                   |   2 +
+ sound/soc/airoha/an7581/Makefile            |   8 +
+ sound/soc/airoha/an7581/an7581-afe-common.h |  35 ++
+ sound/soc/airoha/an7581/an7581-afe-pcm.c    | 455 ++++++++++++++++++++
+ sound/soc/airoha/an7581/an7581-i2s.c        | 110 +++++
+ sound/soc/airoha/an7581/an7581-reg.h        |  29 ++
+ 9 files changed, 660 insertions(+)
+ create mode 100644 sound/soc/airoha/Kconfig
+ create mode 100644 sound/soc/airoha/Makefile
+ create mode 100644 sound/soc/airoha/an7581/Makefile
+ create mode 100644 sound/soc/airoha/an7581/an7581-afe-common.h
+ create mode 100644 sound/soc/airoha/an7581/an7581-afe-pcm.c
+ create mode 100644 sound/soc/airoha/an7581/an7581-i2s.c
+ create mode 100644 sound/soc/airoha/an7581/an7581-reg.h
 
-diff --git a/sound/soc/mediatek/Kconfig b/sound/soc/mediatek/Kconfig
-index 90e367586493..30d48bcb6501 100644
---- a/sound/soc/mediatek/Kconfig
-+++ b/sound/soc/mediatek/Kconfig
-@@ -3,6 +3,16 @@ config SND_SOC_MEDIATEK
- 	tristate
- 	select REGMAP_MMIO
+diff --git a/sound/soc/Kconfig b/sound/soc/Kconfig
+index 1b983c7006f1..5ea1af792f2e 100644
+--- a/sound/soc/Kconfig
++++ b/sound/soc/Kconfig
+@@ -103,6 +103,7 @@ config SND_SOC_USB
  
+ # All the supported SoCs
+ source "sound/soc/adi/Kconfig"
++source "sound/soc/airoha/Kconfig"
+ source "sound/soc/amd/Kconfig"
+ source "sound/soc/apple/Kconfig"
+ source "sound/soc/atmel/Kconfig"
+diff --git a/sound/soc/Makefile b/sound/soc/Makefile
+index 462322c38aa4..a6a9f5e84bad 100644
+--- a/sound/soc/Makefile
++++ b/sound/soc/Makefile
+@@ -46,6 +46,7 @@ obj-$(CONFIG_SND_SOC)	+= codecs/
+ obj-$(CONFIG_SND_SOC)	+= generic/
+ obj-$(CONFIG_SND_SOC)	+= apple/
+ obj-$(CONFIG_SND_SOC)	+= adi/
++obj-$(CONFIG_SND_SOC)	+= airoha/
+ obj-$(CONFIG_SND_SOC)	+= amd/
+ obj-$(CONFIG_SND_SOC)	+= atmel/
+ obj-$(CONFIG_SND_SOC)	+= au1x/
+diff --git a/sound/soc/airoha/Kconfig b/sound/soc/airoha/Kconfig
+new file mode 100644
+index 000000000000..7c271c164f1f
+--- /dev/null
++++ b/sound/soc/airoha/Kconfig
+@@ -0,0 +1,19 @@
++# SPDX-License-Identifier: GPL-2.0-only
 +config SND_SOC_AN7581
 +	tristate "ASoC support for Airoha AN7581 chip"
-+	depends on ARCH_AIROHA
++	depends on ARCH_AIROHA || COMPILE_TEST
 +	select SND_SOC_MEDIATEK
 +	help
 +	  This adds ASoC driver for Airoha AN7581 boards
@@ -38,24 +69,28 @@ index 90e367586493..30d48bcb6501 100644
 +	  Select Y if you have such device.
 +	  If unsure select "N".
 +
- config SND_SOC_MT2701
- 	tristate "ASoC support for Mediatek MT2701 chip"
- 	depends on ARCH_MEDIATEK
-diff --git a/sound/soc/mediatek/Makefile b/sound/soc/mediatek/Makefile
-index 4b55434f2168..fa3dee7c1d58 100644
---- a/sound/soc/mediatek/Makefile
-+++ b/sound/soc/mediatek/Makefile
-@@ -10,3 +10,4 @@ obj-$(CONFIG_SND_SOC_MT8188) += mt8188/
- obj-$(CONFIG_SND_SOC_MT8188) += mt8188/
- obj-$(CONFIG_SND_SOC_MT8192) += mt8192/
- obj-$(CONFIG_SND_SOC_MT8195) += mt8195/
-+obj-$(CONFIG_SND_SOC_AN7581) += an7581/
-diff --git a/sound/soc/mediatek/an7581/Makefile b/sound/soc/mediatek/an7581/Makefile
++config SND_SOC_AN7581_I2S
++	tristate "I2S support for Airoha AN7581 chip"
++	depends on SND_SOC_AN7581
++	help
++	  This adds I2S driver for Airoha AN7581 boards
++	  that can be used with other codecs.
++	  Select Y if you have such device.
++	  If unsure select "N".
+diff --git a/sound/soc/airoha/Makefile b/sound/soc/airoha/Makefile
 new file mode 100644
-index 000000000000..bf475e14096a
+index 000000000000..fef7fed384a9
 --- /dev/null
-+++ b/sound/soc/mediatek/an7581/Makefile
-@@ -0,0 +1,7 @@
++++ b/sound/soc/airoha/Makefile
+@@ -0,0 +1,2 @@
++# SPDX-License-Identifier: GPL-2.0
++obj-$(CONFIG_SND_SOC_AN7581) += an7581/
+diff --git a/sound/soc/airoha/an7581/Makefile b/sound/soc/airoha/an7581/Makefile
+new file mode 100644
+index 000000000000..8cec1a48dc89
+--- /dev/null
++++ b/sound/soc/airoha/an7581/Makefile
+@@ -0,0 +1,8 @@
 +# SPDX-License-Identifier: GPL-2.0
 +
 +# platform driver
@@ -63,24 +98,25 @@ index 000000000000..bf475e14096a
 +	an7581-afe-pcm.o
 +
 +obj-$(CONFIG_SND_SOC_AN7581) += snd-soc-an7581-afe.o
-diff --git a/sound/soc/mediatek/an7581/an7581-afe-common.h b/sound/soc/mediatek/an7581/an7581-afe-common.h
++obj-$(CONFIG_SND_SOC_AN7581_I2S) += an7581-i2s.o
+diff --git a/sound/soc/airoha/an7581/an7581-afe-common.h b/sound/soc/airoha/an7581/an7581-afe-common.h
 new file mode 100644
-index 000000000000..d2528735b75f
+index 000000000000..233f12e77d32
 --- /dev/null
-+++ b/sound/soc/mediatek/an7581/an7581-afe-common.h
++++ b/sound/soc/airoha/an7581/an7581-afe-common.h
 @@ -0,0 +1,35 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * an7581-afe-common.h  --  Airoha AN7581 audio driver definitions
 + */
 +
-+#ifndef _AN_7581_AFE_COMMON_H_
-+#define _AN_7581_AFE_COMMON_H_
++#ifndef _AN7581_AFE_COMMON_H_
++#define _AN7581_AFE_COMMON_H_
 +
 +#include <sound/soc.h>
 +#include <linux/list.h>
 +#include <linux/regmap.h>
-+#include "../common/mtk-base-afe.h"
++#include "../../mediatek/common/mtk-base-afe.h"
 +
 +enum {
 +	AN7581_MEMIF_DL1,
@@ -104,11 +140,11 @@ index 000000000000..d2528735b75f
 +				       unsigned int rate);
 +
 +#endif
-diff --git a/sound/soc/mediatek/an7581/an7581-afe-pcm.c b/sound/soc/mediatek/an7581/an7581-afe-pcm.c
+diff --git a/sound/soc/airoha/an7581/an7581-afe-pcm.c b/sound/soc/airoha/an7581/an7581-afe-pcm.c
 new file mode 100644
-index 000000000000..e1da26feca51
+index 000000000000..9df236881b9b
 --- /dev/null
-+++ b/sound/soc/mediatek/an7581/an7581-afe-pcm.c
++++ b/sound/soc/airoha/an7581/an7581-afe-pcm.c
 @@ -0,0 +1,455 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -125,8 +161,8 @@ index 000000000000..e1da26feca51
 +
 +#include "an7581-afe-common.h"
 +#include "an7581-reg.h"
-+#include "../common/mtk-afe-platform-driver.h"
-+#include "../common/mtk-afe-fe-dai.h"
++#include <sound/mediatek/mtk-afe-platform-driver.h>
++#include <sound/mediatek/mtk-afe-fe-dai.h>
 +
 +enum {
 +	ARH_AFE_RATE_7K = 16,
@@ -265,6 +301,7 @@ index 000000000000..e1da26feca51
 +		.ops = &mtk_afe_fe_ops,
 +	},
 +};
++
 +static const struct snd_soc_component_driver an7581_afe_pcm_dai_component = {
 +	.name = "an7581-afe-pcm-dai",
 +};
@@ -457,7 +494,6 @@ index 000000000000..e1da26feca51
 +	if (IS_ERR(afe->regmap))
 +		return PTR_ERR(afe->regmap);
 +
-+
 +	mutex_init(&afe->irq_alloc_lock);
 +
 +	/* irq initialize */
@@ -565,11 +601,127 @@ index 000000000000..e1da26feca51
 +
 +MODULE_DESCRIPTION("Airoha SoC AFE platform driver for ALSA AN7581");
 +MODULE_LICENSE("GPL");
-diff --git a/sound/soc/mediatek/an7581/an7581-reg.h b/sound/soc/mediatek/an7581/an7581-reg.h
+diff --git a/sound/soc/airoha/an7581/an7581-i2s.c b/sound/soc/airoha/an7581/an7581-i2s.c
+new file mode 100644
+index 000000000000..542caa107921
+--- /dev/null
++++ b/sound/soc/airoha/an7581/an7581-i2s.c
+@@ -0,0 +1,110 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Airoha ALSA SoC I2S platform driver for AN7581
++ *
++ */
++
++#include <linux/module.h>
++#include <sound/soc.h>
++
++#include "an7581-afe-common.h"
++
++SND_SOC_DAILINK_DEFS(playback,
++		     DAILINK_COMP_ARRAY(COMP_CPU("DL1")),
++		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
++		     DAILINK_COMP_ARRAY(COMP_EMPTY()));
++
++SND_SOC_DAILINK_DEFS(capture,
++		     DAILINK_COMP_ARRAY(COMP_CPU("UL1")),
++		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
++		     DAILINK_COMP_ARRAY(COMP_EMPTY()));
++
++static struct snd_soc_dai_link an7581_i2s_dai_links[] = {
++	{
++		.name = "an7581-i2s-playback",
++		.stream_name = "an7581-i2s-playback",
++		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
++			    SND_SOC_DPCM_TRIGGER_POST},
++		.dynamic = 0,
++		.playback_only = 1,
++		SND_SOC_DAILINK_REG(playback),
++	},
++	{
++		.name = "an7581-i2s-capture",
++		.stream_name = "an7581-i2s-capture",
++		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
++			    SND_SOC_DPCM_TRIGGER_POST},
++		.dynamic = 0,
++		.capture_only = 1,
++		SND_SOC_DAILINK_REG(capture),
++	},
++};
++
++static struct snd_soc_card an7581_i2s_card = {
++	.name = "an7581-i2s",
++	.owner = THIS_MODULE,
++	.dai_link = an7581_i2s_dai_links,
++	.num_links = ARRAY_SIZE(an7581_i2s_dai_links),
++};
++
++static int an7581_i2s_machine_probe(struct platform_device *pdev)
++{
++	struct snd_soc_card *card = &an7581_i2s_card;
++	struct device_node *platform_dai_node;
++	struct snd_soc_dai_link *dai_link;
++	struct device_node *platform;
++	int ret, i;
++
++	card->dev = &pdev->dev;
++
++	platform = of_get_child_by_name(pdev->dev.of_node, "platform");
++
++	if (platform) {
++		platform_dai_node = of_parse_phandle(platform, "sound-dai", 0);
++		of_node_put(platform);
++
++		if (!platform_dai_node) {
++			dev_err(&pdev->dev, "Failed to parse platform/sound-dai property\n");
++			return -EINVAL;
++		}
++	} else {
++		dev_err(&pdev->dev, "Property 'platform' missing or invalid\n");
++		return -EINVAL;
++	}
++
++	for_each_card_prelinks(card, i, dai_link) {
++		if (dai_link->platforms->name)
++			continue;
++		dai_link->platforms->of_node = platform_dai_node;
++	}
++
++	ret = devm_snd_soc_register_card(&pdev->dev, card);
++	if (ret) {
++		dev_err_probe(&pdev->dev, ret, "%s snd_soc_register_card fail\n", __func__);
++		goto err_of_node_put;
++	}
++
++	return 0;
++
++err_of_node_put:
++	of_node_put(platform_dai_node);
++	return ret;
++}
++
++static const struct of_device_id an7581_i2s_machine_dt_match[] = {
++	{ .compatible = "airoha,an7581-i2s" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, an7581_i2s_machine_dt_match);
++
++static struct platform_driver an7581_i2s_driver = {
++	.driver = {
++		   .name = "an7581-i2s",
++		   .of_match_table = an7581_i2s_machine_dt_match,
++	},
++	.probe = an7581_i2s_machine_probe,
++};
++module_platform_driver(an7581_i2s_driver);
++
++MODULE_DESCRIPTION("Airoha SoC I2S platform driver for ALSA AN7581");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/airoha/an7581/an7581-reg.h b/sound/soc/airoha/an7581/an7581-reg.h
 new file mode 100644
 index 000000000000..2b14a66afa68
 --- /dev/null
-+++ b/sound/soc/mediatek/an7581/an7581-reg.h
++++ b/sound/soc/airoha/an7581/an7581-reg.h
 @@ -0,0 +1,29 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -601,5 +753,5 @@ index 000000000000..2b14a66afa68
 +
 +#endif
 -- 
-2.50.0
+2.50.1
 
