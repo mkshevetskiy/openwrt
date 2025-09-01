@@ -23,7 +23,7 @@ index 0c198ab6b30f..3cb4d35cd475 100644
 +	case 0x16:
 +		port = 2; /* GDM3 */
 +		break;
- 	case 0x10 ... 0x13:
+ 	case 0x10 ... 0x14:
  		port = 0; /* GDM1 */
  		break;
 -- 

@@ -195,12 +195,12 @@ index faca939053e3..ede4f552896f 100644
 +	if (airhoa_is_phy_external(port)) {
 +		err = airoha_setup_phylink(dev);
 +		if (err)
-+			return err;
++			goto free_metadata_dst;
 +	}
 +
- 	return register_netdev(dev);
- }
- 
+ 	err = register_netdev(dev);
+ 	if (err)
+ 		goto free_metadata_dst;
 @@ -2589,6 +2714,10 @@ static int airoha_probe(struct platform_device *pdev)
  		if (port && port->dev->reg_state == NETREG_REGISTERED) {
  			unregister_netdev(port->dev);

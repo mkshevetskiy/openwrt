@@ -10,23 +10,19 @@
  	if (dev) {
  		struct airoha_wdma_info info = {};
  
-@@ -357,8 +358,14 @@ static int airoha_ppe_foe_entry_prepare(
- 				 FIELD_PREP(AIROHA_FOE_MAC_PPPOE_ID,
- 					    data->pppoe.sid);
+@@ -357,9 +358,11 @@ static int airoha_ppe_foe_entry_prepare(
  	}
--	l2->vlan1 = data->vlan.hdr[0].id;
--	l2->vlan2 = data->vlan.hdr[1].id;
-+
-+	if (data->vlan.num) {
+ 
+ 	if (data->vlan.num) {
 +		u16 tci = FIELD_PREP(VLAN_PRIO_MASK, priority);
 +
-+		l2->vlan1 = tci | data->vlan.hdr[0].id;
-+		if (data->vlan.num == 2)
+ 		l2->vlan1 = data->vlan.hdr[0].id;
+ 		if (data->vlan.num == 2)
+-			l2->vlan2 = data->vlan.hdr[1].id;
 +			l2->vlan2 = tci | data->vlan.hdr[1].id;
-+	}
+ 	}
  
  	if (wlan_etype >= 0) {
- 		l2->etype = wlan_etype;
 --- a/drivers/net/ethernet/airoha/airoha_ppe_debugfs.c
 +++ b/drivers/net/ethernet/airoha/airoha_ppe_debugfs.c
 @@ -158,7 +158,7 @@ static int airoha_ppe_debugfs_foe_show(s

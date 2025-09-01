@@ -95,13 +95,14 @@
  void mt7996_vendor_register(struct mt7996_phy *phy);
 --- /dev/null
 +++ b/mt7996/npu.c
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,301 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2025 AIROHA Inc
 + * Author: Lorenzo Bianconi <lorenzo@kernel.org>
 + */
 +#include <linux/kernel.h>
++#include <linux/skbuff.h>
 +#include <linux/soc/airoha/airoha_offload.h>
 +
 +#include "mt7996.h"
