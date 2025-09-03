@@ -1,7 +1,7 @@
-From 3f2d28369c4dd95ef6f32bba34b1b4717f7ee0c8 Mon Sep 17 00:00:00 2001
+From a368cfcf081e253941352245619746fe5cf9cd14 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
-Date: Fri, 8 Aug 2025 21:07:47 +0200
-Subject: [PATCH 2/2] net: phy: mediatek: add calibration logic for AN7583
+Date: Wed, 3 Sep 2025 03:20:57 +0200
+Subject: [PATCH 4/4] net: phy: mediatek: add calibration logic for AN7583
 
 Similar to Airoha AN7581 Switch PHY also Airoiha AN7583 require
 dedicated calibration and tuneup to make EEE correctly work.
@@ -14,28 +14,46 @@ board resitor type is stored.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- drivers/net/phy/mediatek/Makefile     |   1 +
- drivers/net/phy/mediatek/an7583.c     | 263 ++++++++++++++++++++++++++
- drivers/net/phy/mediatek/mtk-ge-soc.c |  28 +--
- drivers/net/phy/mediatek/mtk.h        |   2 +
- 4 files changed, 281 insertions(+), 13 deletions(-)
+ drivers/net/phy/mediatek/Makefile         |   3 +-
+ drivers/net/phy/mediatek/airoha-phy-lib.c |   5 +-
+ drivers/net/phy/mediatek/an7583.c         | 264 ++++++++++++++++++++++
+ drivers/net/phy/mediatek/mtk-ge-soc.c     |   6 -
+ drivers/net/phy/mediatek/mtk-ge-soc.h     |   1 +
+ drivers/net/phy/mediatek/mtk.h            |   1 +
+ 6 files changed, 271 insertions(+), 9 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/an7583.c
 
 diff --git a/drivers/net/phy/mediatek/Makefile b/drivers/net/phy/mediatek/Makefile
-index 3f28cc176959..abe458ff5315 100644
+index 7c5c8f8158e5..c554343c84d4 100644
 --- a/drivers/net/phy/mediatek/Makefile
 +++ b/drivers/net/phy/mediatek/Makefile
-@@ -4,3 +4,4 @@ obj-$(CONFIG_MEDIATEK_GE_PHY)		+= mtk-ge.o
+@@ -4,3 +4,3 @@ obj-$(CONFIG_MEDIATEK_GE_PHY)		+= mtk-ge.o
  obj-$(CONFIG_MEDIATEK_GE_SOC_PHY)	+= mtk-ge-soc.o
  mtk-ge-soc-objs				+= mtk-ge-soc.o
- mtk-ge-soc-objs				+= an7581.o
-+mtk-ge-soc-objs				+= an7583.o
+-mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o
++mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o an7583.o
+diff --git a/drivers/net/phy/mediatek/airoha-phy-lib.c b/drivers/net/phy/mediatek/airoha-phy-lib.c
+index 77c049b5d89d..a34012cf1c48 100644
+--- a/drivers/net/phy/mediatek/airoha-phy-lib.c
++++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
+@@ -636,8 +636,9 @@ static int airoha_rx_offset_cal_sw(struct phy_device *phydev)
+ 	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x171,
+ 			   BIT(8) | BIT(7));
+ 
+-	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6,
+-		      0x1);
++	if (phydev->drv->phy_id == MTK_GPHY_ID_AN7581)
++		phy_write_mmd(phydev, MDIO_MMD_VEND1,
++			      MTK_PHY_RG_ANA_CAL_RG6, 0x1);
+ 
+ 	return 0;
+ }
 diff --git a/drivers/net/phy/mediatek/an7583.c b/drivers/net/phy/mediatek/an7583.c
 new file mode 100644
-index 000000000000..297da23ee78f
+index 000000000000..e0d357db8bf1
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/an7583.c
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,263 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
 +#include <linux/phy.h>
@@ -43,6 +61,7 @@ index 000000000000..297da23ee78f
 +#include <linux/mfd/syscon.h>
 +
 +#include "mtk.h"
++#include "mtk-ge-soc.h"
 +
 +#define AIROHA_CHIP_SCU_ECC_SEL		0x258
 +#define   AIROHA_CHIP_SCU_MDI_5R	BIT(23)
@@ -188,15 +207,15 @@ index 000000000000..297da23ee78f
 +		shared->r50_cal_tbl = an7583_zcal_to_r50ohm_5R;
 +	shared->tx_amp_compensation_tbl = &an7583_tx_amp_compensation_tbl;
 +
-+	ret = an7581_phy_calib(phydev);
++	ret = airoha_phy_calib(phydev);
 +	if (ret)
 +		return ret;
 +
-+	ret = an7581_phy_auto_select_transformer(phydev);
++	ret = airoha_phy_auto_select_transformer(phydev);
 +	if (ret)
 +		return ret;
 +
-+	ret = an7581_phy_tx_amp_compensation(phydev);
++	ret = airoha_phy_tx_amp_compensation(phydev);
 +	if (ret)
 +		return ret;
 +
@@ -299,66 +318,10 @@ index 000000000000..297da23ee78f
 +	return 0;
 +}
 diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.c b/drivers/net/phy/mediatek/mtk-ge-soc.c
-index 880bc5f7d431..681706ce402f 100644
+index da08ee90948d..5ab31351c268 100644
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
-@@ -1458,8 +1458,9 @@ static int rx_offset_cal_sw(struct phy_device *phydev)
- 	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x171,
- 			   BIT(8) | BIT(7));
- 
--	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG6,
--		      0x1);
-+	if (phydev->drv->phy_id == MTK_GPHY_ID_AN7581)
-+		phy_write_mmd(phydev, MDIO_MMD_VEND1,
-+			      MTK_PHY_RG_ANA_CAL_RG6, 0x1);
- 
- 	return 0;
- }
-@@ -1746,19 +1747,22 @@ static int cal_sw(struct phy_device *phydev, enum CAL_ITEM cal_item,
- 		 */
- 		switch (cal_item) {
- 		case REXT:
--			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
-+			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581 &&
-+			    phydev->drv->phy_id != MTK_GPHY_ID_AN7583)
- 				return -EINVAL;
- 
- 			ret = rext_cal_sw(phydev);
- 			break;
- 		case TX_OFFSET:
--			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
-+			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581 &&
-+			    phydev->drv->phy_id != MTK_GPHY_ID_AN7583)
- 				return -EINVAL;
- 
- 			ret = tx_offset_cal_sw(phydev, pair_n);
- 			break;
- 		case TX_AMP:
--			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
-+			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581 &&
-+			    phydev->drv->phy_id != MTK_GPHY_ID_AN7583)
- 				return -EINVAL;
- 
- 			ret = tx_amp_cal_sw(phydev, pair_n);
-@@ -1767,13 +1771,15 @@ static int cal_sw(struct phy_device *phydev, enum CAL_ITEM cal_item,
- 			ret = tx_vcm_cal_sw(phydev, pair_n);
- 			break;
- 		case TX_R50:
--			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
-+			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581 &&
-+			    phydev->drv->phy_id != MTK_GPHY_ID_AN7583)
- 				return -EINVAL;
- 
- 			ret = tx_r50_cal_sw(phydev, pair_n);
- 			break;
- 		case RX_OFFSET:
--			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581)
-+			if (phydev->drv->phy_id != MTK_GPHY_ID_AN7581 &&
-+			    phydev->drv->phy_id != MTK_GPHY_ID_AN7583)
- 				return -EINVAL;
- 
- 			ret = rx_offset_cal_sw(phydev);
-@@ -2599,12 +2605,6 @@ static int an7581_phy_led_polarity_set(struct phy_device *phydev, int index,
+@@ -1147,12 +1147,6 @@ static int an7581_phy_led_polarity_set(struct phy_device *phydev, int index,
  			      MTK_PHY_LED_ON_POLARITY, val);
  }
  
@@ -371,17 +334,19 @@ index 880bc5f7d431..681706ce402f 100644
  static struct phy_driver mtk_socphy_driver[] = {
  	{
  		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_MT7981),
-@@ -2665,6 +2665,8 @@ static struct phy_driver mtk_socphy_driver[] = {
- 		.led_hw_control_set = mt798x_phy_led_hw_control_set,
- 		.led_hw_control_get = mt798x_phy_led_hw_control_get,
- 		.led_polarity_set = an7581_phy_led_polarity_set,
-+		.read_page	= mtk_phy_read_page,
-+		.write_page	= mtk_phy_write_page,
- 	},
- };
+diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.h b/drivers/net/phy/mediatek/mtk-ge-soc.h
+index db8e96c83a99..aed4be71deb2 100644
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.h
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
+@@ -412,5 +412,6 @@ int airoha_phy_auto_select_transformer(struct phy_device *phydev);
+ int airoha_phy_tx_amp_compensation(struct phy_device *phydev);
  
+ int an7581_phy_config_init(struct phy_device *phydev);
++int an7583_phy_config_init(struct phy_device *phydev);
+ 
+ #endif /* _MTK_GE_SOC_H_ */
 diff --git a/drivers/net/phy/mediatek/mtk.h b/drivers/net/phy/mediatek/mtk.h
-index 6218f3f89cbf..cf1311547dcb 100644
+index 5565191a9fd8..d4ad92231bee 100644
 --- a/drivers/net/phy/mediatek/mtk.h
 +++ b/drivers/net/phy/mediatek/mtk.h
 @@ -15,6 +15,7 @@
@@ -392,13 +357,6 @@ index 6218f3f89cbf..cf1311547dcb 100644
  #define MTK_PHY_PAGE_STANDARD			0x0000
  #define MTK_PHY_PAGE_EXTENDED_52B5		0x52b5
  
-@@ -156,5 +157,6 @@ int an7581_phy_auto_select_transformer(struct phy_device *phydev);
- int an7581_phy_tx_amp_compensation(struct phy_device *phydev);
- 
- int an7581_phy_config_init(struct phy_device *phydev);
-+int an7583_phy_config_init(struct phy_device *phydev);
- 
- #endif /* _MTK_EPHY_H_ */
 -- 
-2.50.0
+2.51.0
 
