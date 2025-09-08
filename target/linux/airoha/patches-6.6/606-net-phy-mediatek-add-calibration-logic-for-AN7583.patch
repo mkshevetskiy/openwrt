@@ -1,7 +1,7 @@
-From a368cfcf081e253941352245619746fe5cf9cd14 Mon Sep 17 00:00:00 2001
+From 14509585ea3f79cca7357a572508c05a36235ce3 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Wed, 3 Sep 2025 03:20:57 +0200
-Subject: [PATCH 4/4] net: phy: mediatek: add calibration logic for AN7583
+Subject: [PATCH 2/2] net: phy: mediatek: add calibration logic for AN7583
 
 Similar to Airoha AN7581 Switch PHY also Airoiha AN7583 require
 dedicated calibration and tuneup to make EEE correctly work.
@@ -16,11 +16,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/phy/mediatek/Makefile         |   3 +-
  drivers/net/phy/mediatek/airoha-phy-lib.c |   5 +-
- drivers/net/phy/mediatek/an7583.c         | 264 ++++++++++++++++++++++
- drivers/net/phy/mediatek/mtk-ge-soc.c     |   6 -
+ drivers/net/phy/mediatek/an7583.c         | 254 ++++++++++++++++++++++
+ drivers/net/phy/mediatek/mtk-ge-soc.c     |   8 +-
  drivers/net/phy/mediatek/mtk-ge-soc.h     |   1 +
  drivers/net/phy/mediatek/mtk.h            |   1 +
- 6 files changed, 271 insertions(+), 9 deletions(-)
+ 6 files changed, 263 insertions(+), 9 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/an7583.c
 
 diff --git a/drivers/net/phy/mediatek/Makefile b/drivers/net/phy/mediatek/Makefile
@@ -33,10 +33,10 @@ index 7c5c8f8158e5..c554343c84d4 100644
 -mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o
 +mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o an7583.o
 diff --git a/drivers/net/phy/mediatek/airoha-phy-lib.c b/drivers/net/phy/mediatek/airoha-phy-lib.c
-index 77c049b5d89d..a34012cf1c48 100644
+index 78783aac2d03..a28cf6b7f51e 100644
 --- a/drivers/net/phy/mediatek/airoha-phy-lib.c
 +++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
-@@ -636,8 +636,9 @@ static int airoha_rx_offset_cal_sw(struct phy_device *phydev)
+@@ -613,8 +613,9 @@ static int airoha_rx_offset_cal_sw(struct phy_device *phydev)
  	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, 0x171,
  			   BIT(8) | BIT(7));
  
@@ -50,10 +50,10 @@ index 77c049b5d89d..a34012cf1c48 100644
  }
 diff --git a/drivers/net/phy/mediatek/an7583.c b/drivers/net/phy/mediatek/an7583.c
 new file mode 100644
-index 000000000000..e0d357db8bf1
+index 000000000000..5e8c02d0bdfb
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/an7583.c
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,253 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
 +#include <linux/phy.h>
@@ -227,40 +227,6 @@ index 000000000000..e0d357db8bf1
 +		phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x701, 0x1023);
 +	}
 +
-+	/* RX setting for 5R_TXMR before AN setting */
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xe6, 0x1111);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xe7, 0x5555);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xe9, 0x0001);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xfe, 0x0000);
-+
-+	/* RX Setting */
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3c, 0xc000);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3d, 0x0000);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e, 0xc000);
-+
-+	/* EEE setting */
-+	phy_write_mmd(phydev, MDIO_MMD_AN, 0x3c, 0x0000);
-+
-+	/* RX */
-+	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x41, 0x3333);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x44, 0x00c0);
-+
-+	/* 10M settings */
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1a3, 0x00d2);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1a4, 0x010e);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x27b, 0x1177);
-+	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x27c, 0x0808);
-+
-+	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_3);
-+	__phy_write(phydev, 0x14, 0x190);
-+	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
-+
-+	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_1);
-+	__phy_write(phydev, 0x14, 0x3a18);
-+	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
-+
-+	phy_write(phydev, 0x9, 0x0600);
-+
 +	if (shared->transformer_type[phy_offset] == TXMR) {
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x23, 0x0881);
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x24, 0x0881);
@@ -312,13 +278,37 @@ index 000000000000..e0d357db8bf1
 +		}
 +	}
 +
++	/* RX Setting */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3c, 0xc000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3d, 0x0000);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x3e, 0xc000);
++
++	/* EEE setting */
++	phy_write_mmd(phydev, MDIO_MMD_AN, 0x3c, 0x0000);
++
++	/* 10M settings */
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1a3, 0x00d2);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x1a4, 0x010e);
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x27b, 0x1177);
++	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x27c, 0x0808);
++
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_3);
++	__phy_write(phydev, 0x14, 0x190);
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
++
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_1);
++	__phy_write(phydev, 0x14, 0x3a18);
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
++
++	phy_write(phydev, 0x9, 0x0600);
++
 +	/* EEE keep only Pair A ON */
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x630, 0x006E);
 +
 +	return 0;
 +}
 diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.c b/drivers/net/phy/mediatek/mtk-ge-soc.c
-index da08ee90948d..5ab31351c268 100644
+index da08ee90948d..4ec1c394304b 100644
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
 @@ -1147,12 +1147,6 @@ static int an7581_phy_led_polarity_set(struct phy_device *phydev, int index,
@@ -334,6 +324,15 @@ index da08ee90948d..5ab31351c268 100644
  static struct phy_driver mtk_socphy_driver[] = {
  	{
  		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_MT7981),
+@@ -1213,6 +1207,8 @@ static struct phy_driver mtk_socphy_driver[] = {
+ 		.led_hw_control_set = mt798x_phy_led_hw_control_set,
+ 		.led_hw_control_get = mt798x_phy_led_hw_control_get,
+ 		.led_polarity_set = an7581_phy_led_polarity_set,
++		.read_page	= mtk_phy_read_page,
++		.write_page	= mtk_phy_write_page,
+ 	},
+ };
+ 
 diff --git a/drivers/net/phy/mediatek/mtk-ge-soc.h b/drivers/net/phy/mediatek/mtk-ge-soc.h
 index db8e96c83a99..aed4be71deb2 100644
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h
@@ -346,10 +345,10 @@ index db8e96c83a99..aed4be71deb2 100644
  
  #endif /* _MTK_GE_SOC_H_ */
 diff --git a/drivers/net/phy/mediatek/mtk.h b/drivers/net/phy/mediatek/mtk.h
-index 5565191a9fd8..d4ad92231bee 100644
+index f172f7d671c9..11f32a8f4b3a 100644
 --- a/drivers/net/phy/mediatek/mtk.h
 +++ b/drivers/net/phy/mediatek/mtk.h
-@@ -15,6 +15,7 @@
+@@ -13,6 +13,7 @@
  
  #define MTK_EXT_PAGE_ACCESS			0x1f
  #define MTK_PHY_PAGE_EXTENDED_1			0x0001

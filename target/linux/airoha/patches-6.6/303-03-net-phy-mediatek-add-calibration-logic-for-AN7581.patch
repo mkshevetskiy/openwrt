@@ -1,7 +1,7 @@
-From 54f2b606da12957093b46cf2f419db8450b64d32 Mon Sep 17 00:00:00 2001
+From 7ce5779ac33b60ccc7a3a863bfaec6e874b3e6ff Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Thu, 10 Jul 2025 22:23:49 +0200
-Subject: [PATCH 3/4] net: phy: mediatek: add calibration logic for AN7581
+Subject: [PATCH 1/2] net: phy: mediatek: add calibration logic for AN7581
 
 Airoha AN7581 require dedicated calibration and specific tuneup to make
 the Ethernet port work on specific HW PCB layout.
@@ -23,12 +23,11 @@ for TX Amp compensation.
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/phy/mediatek/Makefile         |    2 +
- drivers/net/phy/mediatek/airoha-phy-lib.c | 1127 +++++++++++++++++++++
+ drivers/net/phy/mediatek/airoha-phy-lib.c | 1112 +++++++++++++++++++++
  drivers/net/phy/mediatek/an7581.c         |  342 +++++++
  drivers/net/phy/mediatek/mtk-ge-soc.c     |   17 +-
  drivers/net/phy/mediatek/mtk-ge-soc.h     |   65 ++
- drivers/net/phy/mediatek/mtk.h            |    2 +
- 6 files changed, 1554 insertions(+), 1 deletion(-)
+ 5 files changed, 1537 insertions(+), 1 deletion(-)
  create mode 100644 drivers/net/phy/mediatek/airoha-phy-lib.c
  create mode 100644 drivers/net/phy/mediatek/an7581.c
 
@@ -44,10 +43,10 @@ index ac57ecc799fc..7c5c8f8158e5 100644
 +mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o
 diff --git a/drivers/net/phy/mediatek/airoha-phy-lib.c b/drivers/net/phy/mediatek/airoha-phy-lib.c
 new file mode 100644
-index 000000000000..77c049b5d89d
+index 000000000000..78783aac2d03
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
-@@ -0,0 +1,1126 @@
+@@ -0,0 +1,1111 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#include <linux/bitfield.h>
 +#include <linux/phy.h>
@@ -165,7 +164,7 @@ index 000000000000..77c049b5d89d
 +	phydev_p0 = shared->phydev_p0;
 +
 +	/* BG voltage output */
-+	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x100, 0xc000);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND2, 0x100, 0xc000);
 +
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0,
 +		      MTK_PHY_RG_ANA_CALEN);
@@ -193,9 +192,6 @@ index 000000000000..77c049b5d89d
 +	switch (txg_calen_x) {
 +	case PAIR_A:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(12));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG0,
-+				 MTK_PHY_RG_ZCALEN_A);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_A;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_A;
 +		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_A_B;
@@ -203,9 +199,6 @@ index 000000000000..77c049b5d89d
 +		break;
 +	case PAIR_B:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(8));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG1,
-+				 MTK_PHY_RG_ZCALEN_B);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_B;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_B;
 +		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_A_B;
@@ -213,9 +206,6 @@ index 000000000000..77c049b5d89d
 +		break;
 +	case PAIR_C:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(4));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG1,
-+				 MTK_PHY_RG_ZCALEN_C);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_C;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_C;
 +		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_C_D;
@@ -223,9 +213,6 @@ index 000000000000..77c049b5d89d
 +		break;
 +	case PAIR_D:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(0));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG1,
-+				 MTK_PHY_RG_ZCALEN_D);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_D;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_D;
 +		reg = MTK_PHY_RG_CR_TX_AMP_OFFSET_C_D;
@@ -353,9 +340,6 @@ index 000000000000..77c049b5d89d
 +	switch (txg_calen_x) {
 +	case PAIR_A:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(12));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG0,
-+				 MTK_PHY_RG_ZCALEN_A);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_A;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_A;
 +		reg = MTK_PHY_TXVLD_DA_RG;
@@ -367,9 +351,6 @@ index 000000000000..77c049b5d89d
 +		break;
 +	case PAIR_B:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(8));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG1,
-+				 MTK_PHY_RG_ZCALEN_B);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_B;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_B;
 +		reg = MTK_PHY_TX_I2MPB_TEST_MODE_B1;
@@ -381,9 +362,6 @@ index 000000000000..77c049b5d89d
 +		break;
 +	case PAIR_C:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(4));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG1,
-+				 MTK_PHY_RG_ZCALEN_C);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_C;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_C;
 +		reg = MTK_PHY_TX_I2MPB_TEST_MODE_C1;
@@ -395,9 +373,6 @@ index 000000000000..77c049b5d89d
 +		break;
 +	case PAIR_D:
 +		phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xdd, BIT(0));
-+		phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
-+				 MTK_PHY_RG_ANA_CAL_RG1,
-+				 MTK_PHY_RG_ZCALEN_D);
 +		reg_dac1 = MTK_PHY_RG_DASN_DAC_IN0_D;
 +		reg_dac2 = MTK_PHY_RG_DASN_DAC_IN1_D;
 +		reg = MTK_PHY_TX_I2MPB_TEST_MODE_D1;
@@ -468,7 +443,7 @@ index 000000000000..77c049b5d89d
 +		       (zcal_ctrl << __ffs(mask_hbt)) |
 +		       (zcal_ctrl << __ffs(mask_tst)));
 +
-+	phy_write_mmd(phydev, MDIO_MMD_VEND2, 0x100, 0x0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND2, 0x100, 0x0);
 +
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_A, 0);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_DASN_DAC_IN0_B, 0);
@@ -634,6 +609,7 @@ index 000000000000..77c049b5d89d
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
 +	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG0, 0);
++	phy_write_mmd(phydev_p0, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG1, 0);
 +
 +	/* Enable tx slew control */
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x0185, 0x0001);
@@ -902,7 +878,7 @@ index 000000000000..77c049b5d89d
 +			FIELD_PREP(GENMASK(20, 15), 0x4));
 +
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x11,
-+			GENMASK(23, 17) | GENMASK(15, 10) | GENMASK(7, 2),
++			GENMASK(23, 18) | GENMASK(15, 10) | GENMASK(7, 2),
 +			FIELD_PREP(GENMASK(23, 17), 0x0) |
 +			FIELD_PREP(GENMASK(15, 10), 0x0) |
 +			FIELD_PREP(GENMASK(7, 2), 0x0));
@@ -982,6 +958,7 @@ index 000000000000..77c049b5d89d
 +	reg_1e_19_header = ((reg_1e_19_read & 0x3f00) / 256) + *tx_amp_table[TX_AMP_1G_C][phy_offset];
 +	reg_1e_21_header = ((reg_1e_21_read & 0x3f00) / 256) + *tx_amp_table[TX_AMP_1G_D][phy_offset];
 +
++	overflow = false;
 +	if (reg_1e_12_header < txamp_low_limit ||
 +	    reg_1e_12_header > txamp_high_limit)
 +		overflow = true;
@@ -1019,11 +996,12 @@ index 000000000000..77c049b5d89d
 +			reg_1e_21_header = 0x3f;
 +	}
 +
-+	reg_1e_16_end = (reg_1e_12_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_A][phy_offset];
-+	reg_1e_18_end = (reg_1e_17_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_B][phy_offset];
-+	reg_1e_20_end = (reg_1e_19_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_C][phy_offset];
-+	reg_1e_22_end = (reg_1e_21_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_D][phy_offset];
++	reg_1e_16_end = (reg_1e_16_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_A][phy_offset];
++	reg_1e_18_end = (reg_1e_18_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_B][phy_offset];
++	reg_1e_20_end = (reg_1e_20_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_C][phy_offset];
++	reg_1e_22_end = (reg_1e_22_read & 0x003f) + *tx_amp_table[TX_AMP_TEST_D][phy_offset];
 +
++	overflow = false;
 +	if (reg_1e_16_end < txamp_low_limit ||
 +	    reg_1e_16_end > txamp_high_limit)
 +		overflow = true;
@@ -1061,9 +1039,10 @@ index 000000000000..77c049b5d89d
 +			reg_1e_22_end = 0x3f;
 +	}
 +
-+	reg_1e_16_header = ((reg_1e_12_read & 0xfc00) / 1024) + *tx_amp_table[TX_AMP_100M_A][phy_offset];
-+	reg_1e_18_header = ((reg_1e_17_read & 0x3f00) / 256) + *tx_amp_table[TX_AMP_100M_B][phy_offset];
++	reg_1e_16_header = ((reg_1e_16_read & 0xfc00) / 1024) + *tx_amp_table[TX_AMP_100M_A][phy_offset];
++	reg_1e_18_header = ((reg_1e_18_read & 0x3f00) / 256) + *tx_amp_table[TX_AMP_100M_B][phy_offset];
 +
++	overflow = false;
 +	if (reg_1e_16_header < txamp_low_limit ||
 +	    reg_1e_16_header > txamp_high_limit)
 +		overflow = true;
@@ -1088,6 +1067,7 @@ index 000000000000..77c049b5d89d
 +	reg_1e_12_end = (reg_1e_12_read & 0x003f) + *tx_amp_table[TX_AMP_10M_A][phy_offset];
 +	reg_1e_17_end = (reg_1e_17_read & 0x003f) + *tx_amp_table[TX_AMP_10M_B][phy_offset];
 +
++	overflow = false;
 +	if (reg_1e_12_end < txamp_low_limit ||
 +	    reg_1e_12_end > txamp_high_limit)
 +		overflow = true;
@@ -1109,11 +1089,12 @@ index 000000000000..77c049b5d89d
 +			reg_1e_17_end = 0x3f;
 +	}
 +
-+	reg_1e_174_header = ((reg_1e_12_read & 0x7f00) / 256) + *tx_amp_table[TX_AMP_TEST_A][phy_offset];
-+	reg_1e_174_end = (reg_1e_17_read & 0x007f) + *tx_amp_table[TX_AMP_TEST_B][phy_offset];
-+	reg_1e_175_header = ((reg_1e_19_read & 0x7f00) / 256) + *tx_amp_table[TX_AMP_TEST_C][phy_offset];
-+	reg_1e_175_end = (reg_1e_21_read & 0x007f) + *tx_amp_table[TX_AMP_TEST_D][phy_offset];
++	reg_1e_174_header = ((reg_1e_174_read & 0x7f00) / 256) + *tx_amp_table[R50_A][phy_offset];
++	reg_1e_174_end = (reg_1e_17_read & 0x007f) + *tx_amp_table[R50_B][phy_offset];
++	reg_1e_175_header = ((reg_1e_175_read & 0x7f00) / 256) + *tx_amp_table[R50_C][phy_offset];
++	reg_1e_175_end = (reg_1e_21_read & 0x007f) + *tx_amp_table[R50_D][phy_offset];
 +
++	overflow = false;
 +	if (reg_1e_174_header < r50_low_limit ||
 +	    reg_1e_174_header > r50_high_limit)
 +		overflow = true;
@@ -1156,9 +1137,9 @@ index 000000000000..77c049b5d89d
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x16,
 +		      (reg_1e_16_header * 1024) + reg_1e_16_end);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x17,
-+		      (reg_1e_17_header * 1024) + reg_1e_17_end);
++		      (reg_1e_17_header * 256) + reg_1e_17_end);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x18,
-+		      (reg_1e_18_header * 1024) + reg_1e_18_end);
++		      (reg_1e_18_header * 256) + reg_1e_18_end);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x19,
 +		      (reg_1e_19_read & 0x00ff) + (reg_1e_19_header * 256));
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x20,
@@ -1171,6 +1152,9 @@ index 000000000000..77c049b5d89d
 +		      0x8080 + (reg_1e_174_header * 256) + reg_1e_174_end);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x175,
 +		      0x8080 + (reg_1e_175_header * 256) + reg_1e_175_end);
++
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x176, 0x4400);
++	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x177, 0x0044);
 +
 +	return 0;
 +}
