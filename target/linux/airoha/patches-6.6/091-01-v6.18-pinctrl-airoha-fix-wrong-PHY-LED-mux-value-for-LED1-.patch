@@ -1,7 +1,7 @@
-From 1b4c6245e00d68e5f86f38450df63e456c7c72b5 Mon Sep 17 00:00:00 2001
+From af87d38c442c75a40c7d0a7d8c31557e2e6ccf98 Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Sun, 25 May 2025 20:22:40 +0200
-Subject: [PATCH 1/5] pinctrl: airoha: fix wrong PHY LED mux value for LED1
+Subject: [PATCH 1/2] pinctrl: airoha: fix wrong PHY LED mux value for LED1
  GPIO46
 
 In all the MUX value for LED1 GPIO46 there is a Copy-Paste error where
@@ -21,7 +21,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  1 file changed, 8 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/pinctrl/mediatek/pinctrl-airoha.c b/drivers/pinctrl/mediatek/pinctrl-airoha.c
-index b97b28ebb37a..8ef7f88477aa 100644
+index 5d84a778683d..f7f8fd2f35fc 100644
 --- a/drivers/pinctrl/mediatek/pinctrl-airoha.c
 +++ b/drivers/pinctrl/mediatek/pinctrl-airoha.c
 @@ -1752,8 +1752,8 @@ static const struct airoha_pinctrl_func_group phy1_led1_func_group[] = {
@@ -69,5 +69,5 @@ index b97b28ebb37a..8ef7f88477aa 100644
  		.regmap[1] = {
  			AIROHA_FUNC_MUX,
 -- 
-2.48.1
+2.51.0
 
