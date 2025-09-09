@@ -296,6 +296,13 @@
 		clock-output-names = "clkxtal";
 	};
 
+	sys_hclk: clk-oscillator-100mhz {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+		clock-output-names = "sys_hclk";
+	};
+
 	vmmc_3v3: regulator-vmmc-3v3 {
 		compatible = "regulator-fixed";
 		regulator-name = "vmmc";
@@ -475,7 +482,7 @@
 			compatible = "airoha,en7581-wdt";
 			reg = <0x0 0x1fbf0100 0x0 0x38>;
 
-			clocks = <&scuclk EN7523_CLK_BUS>;
+			clocks = <&sys_hclk>;
 			clock-names = "bus";
 		};
 
