@@ -814,7 +814,7 @@ index 000000000000..78783aac2d03
 +			FIELD_PREP(GENMASK(20, 15), 0x1f));
 +
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x11,
-+			GENMASK(23, 17) | GENMASK(15, 10) | GENMASK(7, 2),
++			GENMASK(23, 18) | GENMASK(15, 10) | GENMASK(7, 2),
 +			FIELD_PREP(GENMASK(23, 18), 0x1f) |
 +			FIELD_PREP(GENMASK(15, 10), 0x1f) |
 +			FIELD_PREP(GENMASK(7, 2), 0x1f));
@@ -879,7 +879,7 @@ index 000000000000..78783aac2d03
 +
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x11,
 +			GENMASK(23, 18) | GENMASK(15, 10) | GENMASK(7, 2),
-+			FIELD_PREP(GENMASK(23, 17), 0x0) |
++			FIELD_PREP(GENMASK(23, 18), 0x0) |
 +			FIELD_PREP(GENMASK(15, 10), 0x0) |
 +			FIELD_PREP(GENMASK(7, 2), 0x0));
 +
@@ -1090,9 +1090,9 @@ index 000000000000..78783aac2d03
 +	}
 +
 +	reg_1e_174_header = ((reg_1e_174_read & 0x7f00) / 256) + *tx_amp_table[R50_A][phy_offset];
-+	reg_1e_174_end = (reg_1e_17_read & 0x007f) + *tx_amp_table[R50_B][phy_offset];
++	reg_1e_174_end = (reg_1e_174_read & 0x007f) + *tx_amp_table[R50_B][phy_offset];
 +	reg_1e_175_header = ((reg_1e_175_read & 0x7f00) / 256) + *tx_amp_table[R50_C][phy_offset];
-+	reg_1e_175_end = (reg_1e_21_read & 0x007f) + *tx_amp_table[R50_D][phy_offset];
++	reg_1e_175_end = (reg_1e_175_read & 0x007f) + *tx_amp_table[R50_D][phy_offset];
 +
 +	overflow = false;
 +	if (reg_1e_174_header < r50_low_limit ||
