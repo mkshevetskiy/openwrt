@@ -46,7 +46,7 @@ new file mode 100644
 index 000000000000..78783aac2d03
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
-@@ -0,0 +1,1111 @@
+@@ -0,0 +1,1115 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#include <linux/bitfield.h>
 +#include <linux/phy.h>
@@ -809,6 +809,7 @@ index 000000000000..78783aac2d03
 +		      0x8000 | 0xf0);
 +
 +	/* Force pGA gain */
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_52B5);
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x10,
 +			GENMASK(20, 15),
 +			FIELD_PREP(GENMASK(20, 15), 0x1f));
@@ -818,6 +819,7 @@ index 000000000000..78783aac2d03
 +			FIELD_PREP(GENMASK(23, 18), 0x1f) |
 +			FIELD_PREP(GENMASK(15, 10), 0x1f) |
 +			FIELD_PREP(GENMASK(7, 2), 0x1f));
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
 +
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xc9, 0xffff);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x151, 0x12);
@@ -873,6 +875,7 @@ index 000000000000..78783aac2d03
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0xc9, 0xfff);
 +	phy_write_mmd(phydev, MDIO_MMD_VEND1, 0x151, 0x0);
 +
++	phy_select_page(phydev, MTK_PHY_PAGE_EXTENDED_52B5);
 +	__mtk_tr_modify(phydev, 0x1, 0xf, 0x10,
 +			GENMASK(20, 15),
 +			FIELD_PREP(GENMASK(20, 15), 0x4));
@@ -882,6 +885,7 @@ index 000000000000..78783aac2d03
 +			FIELD_PREP(GENMASK(23, 18), 0x0) |
 +			FIELD_PREP(GENMASK(15, 10), 0x0) |
 +			FIELD_PREP(GENMASK(7, 2), 0x0));
++	phy_restore_page(phydev, MTK_PHY_PAGE_STANDARD, 0);
 +
 +	/* Restore BMCR */
 +	phy_write(phydev, MII_BMCR, bmcr_tmp);
