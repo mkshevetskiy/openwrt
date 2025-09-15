@@ -1,7 +1,7 @@
-From 5c8382e6b0624f476fff31efdb90bb5e36457e2e Mon Sep 17 00:00:00 2001
+From ddee0533ac9906ea5a40ac2e0474034135aa074d Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Fri, 17 Jan 2025 12:40:32 +0100
-Subject: [PATCH 3/7] net: pcs: airoha: add PCS driver for Airoha AN7581 SoC
+Subject: [PATCH 4/8] net: pcs: airoha: add PCS driver for Airoha AN7581 SoC
 
 Add PCS driver for Airoha AN7581 SoC for ethernet SERDES and permit usage of
 external PHY or connected SFP cage. Supported modes are USXGMII,
@@ -17,11 +17,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  drivers/net/pcs/Makefile                   |    2 +
  drivers/net/pcs/airoha/Kconfig             |   11 +
  drivers/net/pcs/airoha/Makefile            |    7 +
- drivers/net/pcs/airoha/pcs-airoha-common.c | 1005 ++++++++++++++
- drivers/net/pcs/airoha/pcs-airoha.h        |  802 ++++++++++++
- drivers/net/pcs/airoha/pcs-an7581.c        | 1368 ++++++++++++++++++++
+ drivers/net/pcs/airoha/pcs-airoha-common.c | 1033 ++++++++++++++
+ drivers/net/pcs/airoha/pcs-airoha.h        |  822 ++++++++++++
+ drivers/net/pcs/airoha/pcs-an7581.c        | 1419 ++++++++++++++++++++
  include/linux/pcs/pcs-airoha.h             |    9 +
- 8 files changed, 3206 insertions(+)
+ 8 files changed, 3305 insertions(+)
  create mode 100644 drivers/net/pcs/airoha/Kconfig
  create mode 100644 drivers/net/pcs/airoha/Makefile
  create mode 100644 drivers/net/pcs/airoha/pcs-airoha-common.c
@@ -82,10 +82,10 @@ index 000000000000..25cb8f090c21
 +endif
 diff --git a/drivers/net/pcs/airoha/pcs-airoha-common.c b/drivers/net/pcs/airoha/pcs-airoha-common.c
 new file mode 100644
-index 000000000000..1392ecf45008
+index 000000000000..916f03c259bd
 --- /dev/null
 +++ b/drivers/net/pcs/airoha/pcs-airoha-common.c
-@@ -0,0 +1,1005 @@
+@@ -0,0 +1,1035 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -382,7 +382,16 @@ index 000000000000..1392ecf45008
 +static void airoha_pcs_get_state_usxgmii(struct airoha_pcs_priv *priv,
 +					 struct phylink_link_state *state)
 +{
-+	u32 lpa;
++	const struct airoha_pcs_match_data *data = priv->data;
++	u32 an_done, lpa;
++
++	/* Trigger HW workaround if needed. If an error is reported,
++	 * consider link down and test again later.
++	 */
++	if (data->rxlock_workaround && data->rxlock_workaround(priv)) {
++		state->link = false;
++		return;
++	}
 +
 +	/* Toggle AN Status */
 +	regmap_set_bits(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_CONTROL_6,
@@ -391,9 +400,10 @@ index 000000000000..1392ecf45008
 +			  AIROHA_PCS_USXGMII_TOG_PCS_AUTONEG_STS);
 +
 +	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_STATS_0, &lpa);
++	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_STATS_2, &an_done);
 +
 +	state->link = !!(lpa & MDIO_USXGMII_LINK);
-+	state->an_complete = state->link;
++	state->an_complete = !!(an_done & AIROHA_PCS_USXGMII_PCS_AN_COMPLETE);
 +
 +	phylink_decode_usxgmii_word(state, lpa);
 +}
@@ -409,7 +419,8 @@ index 000000000000..1392ecf45008
 +	regmap_clear_bits(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_CONTROL_6,
 +			  AIROHA_PCS_USXGMII_TOG_PCS_AUTONEG_STS);
 +
-+	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_STUS_1, &status);
++	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_BASE_R_10GB_T_PCS_STUS_1,
++		    &status);
 +	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_AN_STATS_0, &curr_mode);
 +
 +	state->link = !!(status & AIROHA_PCS_USXGMII_RX_LINK_STUS);
@@ -959,17 +970,20 @@ index 000000000000..1392ecf45008
 +static int airoha_pcs_probe(struct platform_device *pdev)
 +{
 +	struct regmap_config syscon_config = airoha_pcs_regmap_config;
++	const struct airoha_pcs_match_data *data;
 +	struct device *dev = &pdev->dev;
 +	struct airoha_pcs_priv *priv;
 +	void *base;
 +	int ret;
++
++	data = of_device_get_match_data(dev);
 +
 +	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 +	if (!priv)
 +		return -ENOMEM;
 +
 +	priv->dev = dev;
-+	priv->data = of_device_get_match_data(dev);
++	priv->data = data;
 +
 +	base = devm_platform_ioremap_resource_byname(pdev, "xfi_mac");
 +	if (IS_ERR(base))
@@ -1055,6 +1069,21 @@ index 000000000000..1392ecf45008
 +	if (ret)
 +		return dev_err_probe(dev, ret, "failed to get bulk reset lines\n");
 +
++	/* For Ethernet PCS, read the AN7581 SoC revision to check if
++	 * manual rx calibration is needed. This is only limited to
++	 * any SoC revision before E2.
++	 */
++	if (data->port_type == AIROHA_PCS_ETH) {
++		u32 val;
++
++		ret = regmap_read(priv->scu, AIROHA_SCU_PDIDR, &val);
++		if (ret)
++			return ret;
++
++		if (FIELD_GET(AIROHA_SCU_PRODUCT_ID, val) < 0x2)
++			priv->manual_rx_calib = true;
++	}
++
 +	platform_set_drvdata(pdev, priv);
 +
 +	return 0;
@@ -1064,6 +1093,7 @@ index 000000000000..1392ecf45008
 +	.port_type = AIROHA_PCS_ETH,
 +	.bringup = an7581_pcs_bringup,
 +	.link_up = an7581_pcs_phya_link_up,
++	.rxlock_workaround = an7581_pcs_rxlock_workaround,
 +};
 +
 +static const struct airoha_pcs_match_data an7581_pcs_pon = {
@@ -1093,10 +1123,10 @@ index 000000000000..1392ecf45008
 +MODULE_AUTHOR("Christian Marangi <ansuelsmth@gmail.com>");
 diff --git a/drivers/net/pcs/airoha/pcs-airoha.h b/drivers/net/pcs/airoha/pcs-airoha.h
 new file mode 100644
-index 000000000000..e99c51ddec6a
+index 000000000000..93ddec60d6dd
 --- /dev/null
 +++ b/drivers/net/pcs/airoha/pcs-airoha.h
-@@ -0,0 +1,802 @@
+@@ -0,0 +1,822 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -1110,6 +1140,8 @@ index 000000000000..e99c51ddec6a
 +#include <linux/reset.h>
 +
 +/* SCU*/
++#define AIROHA_SCU_PDIDR			0x5c
++#define   AIROHA_SCU_PRODUCT_ID			GENMASK(15, 0)
 +#define AIROHA_SCU_WAN_CONF			0x70
 +#define   AIROHA_SCU_WAN_SEL			GENMASK(7, 0)
 +#define   AIROHA_SCU_WAN_SEL_SGMII		FIELD_PREP_CONST(AIROHA_SCU_WAN_SEL, 0x10)
@@ -1279,7 +1311,13 @@ index 000000000000..e99c51ddec6a
 +/* USXGMII */
 +#define AIROHA_PCS_USXGMII_PCS_CTROL_1		0x0
 +#define   AIROHA_PCS_USXGMII_SPEED_SEL_H	BIT(13)
-+#define AIROHA_PCS_USXGMII_PCS_STUS_1		0x30
++#define AIROHA_PCS_USXGMII_PCS_STUS_1		0x4
++#define   AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS	BIT(2)
++#define   AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS_UP \
++	FIELD_PREP_CONST(AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS, 0x1)
++#define   AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS_DOWN \
++	FIELD_PREP_CONST(AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS, 0x0)
++#define AIROHA_PCS_USXGMII_BASE_R_10GB_T_PCS_STUS_1 0x30
 +#define   AIROHA_PCS_USXGMII_RX_LINK_STUS	BIT(12)
 +#define   AIROHA_PCS_USXGMII_PRBS9_PATT_TST_ABILITY BIT(3)
 +#define   AIROHA_PCS_USXGMII_PRBS31_PATT_TST_ABILITY BIT(2)
@@ -1714,8 +1752,11 @@ index 000000000000..e99c51ddec6a
 +#define AIROHA_PCS_PMA_SS_DA_XPON_PWDB_1	0x350
 +#define   AIROHA_PCS_PMA_RX_SIDGET_PWDB		BIT(0)
 +#define AIROHA_PCS_PMA_DIG_RESERVE_0		0x360
++#define   AIROHA_PCS_TRIGGER_RX_SIDGET_SCAN	GENMASK(17, 16)
 +#define AIROHA_PCS_PMA_XPON_RX_RESERVED_1	0x374
 +#define   AIROHA_PCS_PMA_XPON_RX_RATE_CTRL	GENMASK(1, 0)
++#define AIROHA_PCS_PMA_DIG_RO_RESERVE_2		0x380
++#define   AIROHA_PCS_RX_SIGDET			BIT(8)
 +#define AIROHA_PCS_PMA_RX_SYS_EN_SEL_0		0x38c
 +#define   AIROHA_PCS_PMA_RX_SYS_EN_SEL		GENMASK(1, 0)
 +#define AIROHA_PCS_PMA_PLL_TDC_FREQDET_0	0x390
@@ -1865,6 +1906,8 @@ index 000000000000..e99c51ddec6a
 +	struct regmap *xfi_ana;
 +
 +	struct reset_control_bulk_data rsts[AIROHA_PCS_MAX_NUM_RSTS];
++
++	bool manual_rx_calib;
 +};
 +
 +struct airoha_pcs_port {
@@ -1879,6 +1922,7 @@ index 000000000000..e99c51ddec6a
 +	int (*bringup)(struct airoha_pcs_priv *priv,
 +			phy_interface_t interface);
 +	void (*link_up)(struct airoha_pcs_priv *priv);
++	int (*rxlock_workaround)(struct airoha_pcs_priv *priv);
 +};
 +
 +#define to_airoha_pcs_port(n) container_of(n, struct airoha_pcs_port, pcs);
@@ -1888,6 +1932,7 @@ index 000000000000..e99c51ddec6a
 +		       phy_interface_t interface);
 +
 +void an7581_pcs_phya_link_up(struct airoha_pcs_priv *priv);
++int an7581_pcs_rxlock_workaround(struct airoha_pcs_priv *priv);
 +#else
 +static inline int an7581_pcs_bringup(struct airoha_pcs_priv *priv,
 +				     phy_interface_t interface)
@@ -1898,13 +1943,18 @@ index 000000000000..e99c51ddec6a
 +static inline void an7581_pcs_phya_link_up(struct airoha_pcs_priv *priv)
 +{
 +}
++
++static inline int an7581_pcs_rxlock_workaround(struct airoha_pcs_priv *priv)
++{
++	return 0;
++}
 +#endif
 diff --git a/drivers/net/pcs/airoha/pcs-an7581.c b/drivers/net/pcs/airoha/pcs-an7581.c
 new file mode 100644
-index 000000000000..4bbf9a650fca
+index 000000000000..e4e9e040029d
 --- /dev/null
 +++ b/drivers/net/pcs/airoha/pcs-an7581.c
-@@ -0,0 +1,1368 @@
+@@ -0,0 +1,1419 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (c) 2024 AIROHA Inc
@@ -3167,7 +3217,7 @@ index 000000000000..4bbf9a650fca
 +	usleep_range(100, 200);
 +
 +retry_calibration:
-+	an7581_pcs_cdr_reset(priv, interface, true);
++	an7581_pcs_cdr_reset(priv, interface, priv->manual_rx_calib);
 +
 +	/* Global reset clear */
 +	regmap_update_bits(priv->xfi_pma, AIROHA_PCS_PMA_SW_RST_SET,
@@ -3205,6 +3255,12 @@ index 000000000000..4bbf9a650fca
 +	usleep_range(5000, 7000);
 +
 +	an7581_pcs_cdr_reset(priv, interface, false);
++
++	/* Manual RX calibration is required only for SoC before E2
++	 * revision. E2+ SoC autocalibrate RX and only CDR reset is needed.
++	 */
++	if (!priv->manual_rx_calib)
++		return 0;
 +
 +	/* It was discovered that after a global reset and auto mode gets
 +	 * actually enabled, the fl_out from calibration might change and
@@ -3273,6 +3329,51 @@ index 000000000000..4bbf9a650fca
 +	regmap_set_bits(priv->xfi_pma, AIROHA_PCS_PMA_SW_RST_SET,
 +			AIROHA_PCS_PMA_SW_HSG_TXPCS_RST_N);
 +}
++
++static bool an7581_pcs_have_rx_signal(struct airoha_pcs_priv *priv)
++{
++	unsigned int count = 0;
++	u32 val;
++	int i;
++
++	regmap_write(priv->xfi_pma, AIROHA_PCS_PMA_DIG_RESERVE_0,
++		     AIROHA_PCS_TRIGGER_RX_SIDGET_SCAN);
++
++	/* Scan 5 times for RX sigdet module to detect RX signal */
++	for (i = 0; i <= 5; i++) {
++		regmap_read(priv->xfi_pma, AIROHA_PCS_PMA_DIG_RO_RESERVE_2,
++			    &val);
++		if (val & AIROHA_PCS_RX_SIGDET)
++			count++;
++	}
++
++	/* Consider signal presence if we detect signal at least 4 times */
++	return count >= 4;
++}
++
++int an7581_pcs_rxlock_workaround(struct airoha_pcs_priv *priv)
++{
++	u32 val;
++
++	/* Check if PCS is UP or Down */
++	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_STUS_1, &val)
++	if (val & AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS_UP)
++		return 0;
++
++	/* Validate if this is consistent with RX SigDet module */
++	if (!an7581_pcs_have_rx_signal(priv))
++		return 0;
++
++	/* If PCS is down but RX SigDet module detected signal,
++	 * trigger CDR reset.
++	 */
++	an7581_pcs_cdr_reset(priv, PHY_INTERFACE_MODE_NA, false);
++
++	/* Report there is an error with Link Detection and we
++	 * should test again later.
++	 */
++	return -EINVAL;
++}
 diff --git a/include/linux/pcs/pcs-airoha.h b/include/linux/pcs/pcs-airoha.h
 new file mode 100644
 index 000000000000..9b17134f7290
@@ -3289,5 +3390,5 @@ index 000000000000..9b17134f7290
 +
 +#endif /* __LINUX_PCS_AIROHA_H */
 -- 
-2.50.0
+2.51.0
 
