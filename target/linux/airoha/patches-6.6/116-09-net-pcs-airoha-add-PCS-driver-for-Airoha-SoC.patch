@@ -3356,7 +3356,7 @@ index 000000000000..e4e9e040029d
 +	u32 val;
 +
 +	/* Check if PCS is UP or Down */
-+	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_STUS_1, &val)
++	regmap_read(priv->usxgmii_pcs, AIROHA_PCS_USXGMII_PCS_STUS_1, &val);
 +	if (val & AIROHA_PCS_USXGMII_PCS_RX_LINK_STATUS_UP)
 +		return 0;
 +
