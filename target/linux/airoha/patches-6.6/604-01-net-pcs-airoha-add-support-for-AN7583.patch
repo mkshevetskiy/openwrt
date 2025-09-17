@@ -61,7 +61,7 @@ index 916f03c259bd..f9ba4a47da1d 100644
  			   xsi_sel);
 +
 +	/* AN7583 require additional setting */
-+	if (of_device_is_compatible(dev->of_node, "airoha,an7583-pcs-eth"))
++	if (device_is_compatible(dev, "airoha,an7583-pcs-eth"))
 +		regmap_update_bits(priv->scu, AIROHA_SCU_WAN_CONF,
 +				   AIROHA_SCU_ETH_MAC_SEL,
 +				   AIROHA_SCU_ETH_MAC_SEL_XFI);
@@ -110,7 +110,17 @@ index 916f03c259bd..f9ba4a47da1d 100644
  	}
  
  	/* Clear any force bit that my be set by bootloader */
-@@ -1001,6 +1023,8 @@ static int airoha_pcs_probe(struct platform_device *pdev)
+@@ -985,7 +1007,8 @@ static int airoha_pcs_probe(struct platform_device *pdev)
+ 	 * manual rx calibration is needed. This is only limited to
+ 	 * any SoC revision before E2.
+ 	 */
+-	if (data->port_type == AIROHA_PCS_ETH) {
++	if (device_is_compatible(dev, "airoha,an7581-pcs-eth") &&
++	    data->port_type == AIROHA_PCS_ETH) {
+ 		u32 val;
+ 
+ 		ret = regmap_read(priv->scu, AIROHA_SCU_PDIDR, &val);
+@@ -1003,6 +1026,8 @@ static int airoha_pcs_probe(struct platform_device *pdev)
  
  static const struct airoha_pcs_match_data an7581_pcs_eth = {
  	.port_type = AIROHA_PCS_ETH,
