@@ -74,7 +74,7 @@ define Device/airoha_an7581-evb-emmc-an8831
   DEVICE_MODEL := AN7581 Evaluation Board (EMMC + AN8831)
   DEVICE_DTS := an7581-evb-emmc-an8831
   DEVICE_DTS_DIR := ../dts
-  DEVICE_PACKAGES := kmod-i2c-an7581
+  DEVICE_PACKAGES := kmod-i2c-an7581 kmod-phy-aeonsemi-as21xxx
   ARTIFACT/preloader.bin := an7581-preloader rfb
   ARTIFACT/bl31-uboot.fip := an7581-bl31-uboot rfb
   ARTIFACT/bl2-bl31-uboot.bin := an7581-emmc-bl2-bl31-uboot rfb

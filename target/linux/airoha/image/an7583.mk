@@ -28,7 +28,7 @@ define Device/airoha_an7583-evb
   $(call Device/FitImageLzma)
   DEVICE_VENDOR := Airoha
   DEVICE_MODEL := AN7583 Evaluation Board (SNAND)
-  DEVICE_PACKAGES := kmod-leds-pwm kmod-input-gpio-keys-polled
+  DEVICE_PACKAGES := kmod-leds-pwm kmod-input-gpio-keys-polled kmod-phy-aeonsemi-as21xxx
   DEVICE_DTS := an7583-evb
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_CONFIG := config@1
