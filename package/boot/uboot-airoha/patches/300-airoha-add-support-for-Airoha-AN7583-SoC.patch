@@ -110,7 +110,7 @@ new file mode 100644
 index 00000000000..30fb729fc02
 --- /dev/null
 +++ b/arch/arm/dts/an7583.dtsi
-@@ -0,0 +1,387 @@
+@@ -0,0 +1,392 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +
 +#include <dt-bindings/interrupt-controller/irq.h>
@@ -252,24 +252,29 @@ index 00000000000..30fb729fc02
 +			compatible = "syscon", "simple-mfd";
 +			reg = <0x0 0x1fb00000 0x0 0x970>;
 +
++			#address-cells = <1>;
++			#size-cells = <0>;
++
 +			scuclk: scuclk {
 +				compatible = "airoha,an7583-scu";
 +				#clock-cells = <1>;
 +				#reset-cells = <1>;
 +			};
 +
-+			mdio_0: mdio-0 {
++			mdio_0: mdio-bus@c8 {
 +				compatible = "airoha,an7583-mdio";
-+				resets = <&scuclk AN7583_MDIO0>;
++				reg = <0xc8>;
 +
-+				airoha,bus-id = <0>;
++				clocks = <&scuclk AN7583_CLK_MDIO0>;
++				resets = <&scuclk AN7583_MDIO0>;
 +			};
 +
-+			mdio_1: mdio-1 {
++			mdio_1: mdio-bus@cc {
 +				compatible = "airoha,an7583-mdio";
-+				resets = <&scuclk AN7583_MDIO1>;
++				reg = <0xcc>;
 +
-+				airoha,bus-id = <1>;
++				clocks = <&scuclk AN7583_CLK_MDIO1>;
++				resets = <&scuclk AN7583_MDIO1>;
 +			};
 +		};
 +

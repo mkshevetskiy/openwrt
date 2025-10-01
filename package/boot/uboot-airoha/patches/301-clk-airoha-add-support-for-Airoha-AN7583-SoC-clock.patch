@@ -1,21 +1,29 @@
-From 62ab067847b30d73d4f661bdc99e9f32ff03f338 Mon Sep 17 00:00:00 2001
+From e653d73f3f0e842d5dfb4bac21ddd61bb189456d Mon Sep 17 00:00:00 2001
 From: Christian Marangi <ansuelsmth@gmail.com>
 Date: Tue, 29 Apr 2025 13:19:11 +0200
-Subject: [PATCH] clk: airoha: add support for Airoha AN7583 SoC clock
+Subject: [PATCH 06/27] clk: airoha: add support for Airoha AN7583 SoC clock
 
 Add support for Airoha AN7583 SoC clock that implement more base values
 for clocks compared to AN7581.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- drivers/clk/airoha/clk-airoha.c | 131 ++++++++++++++++++++++++++++++++
- 1 file changed, 131 insertions(+)
+ drivers/clk/airoha/clk-airoha.c | 158 ++++++++++++++++++++++++++++++++
+ 1 file changed, 158 insertions(+)
 
 diff --git a/drivers/clk/airoha/clk-airoha.c b/drivers/clk/airoha/clk-airoha.c
-index 1b2c4c98de5..c5105c59ec0 100644
+index 1b2c4c98de5..5a8f45ae7a2 100644
 --- a/drivers/clk/airoha/clk-airoha.c
 +++ b/drivers/clk/airoha/clk-airoha.c
-@@ -73,6 +73,14 @@ static const u32 bus7581_base[] = { 600000000, 540000000 };
+@@ -34,6 +34,7 @@
+ #define REG_CRYPTO_CLKSRC2		0x20c
+ 
+ #define EN7581_MAX_CLKS			9
++#define EN7583_MAX_CLKS			11
+ 
+ struct airoha_clk_desc {
+ 	int id;
+@@ -73,6 +74,14 @@ static const u32 bus7581_base[] = { 600000000, 540000000 };
  static const u32 npu7581_base[] = { 800000000, 750000000, 720000000, 600000000 };
  static const u32 crypto_base[] = { 540000000, 480000000 };
  static const u32 emmc7581_base[] = { 200000000, 150000000 };
@@ -30,11 +38,11 @@ index 1b2c4c98de5..c5105c59ec0 100644
  
  static const struct airoha_clk_desc en7581_base_clks[EN7581_MAX_CLKS] = {
  	[EN7523_CLK_GSW] = {
-@@ -186,6 +194,121 @@ static const struct airoha_clk_desc en7581_base_clks[EN7581_MAX_CLKS] = {
+@@ -186,6 +195,147 @@ static const struct airoha_clk_desc en7581_base_clks[EN7581_MAX_CLKS] = {
  	}
  };
  
-+static const struct airoha_clk_desc an7583_base_clks[EN7581_MAX_CLKS] = {
++static const struct airoha_clk_desc an7583_base_clks[EN7583_MAX_CLKS] = {
 +	[EN7523_CLK_GSW] = {
 +		.id = EN7523_CLK_GSW,
 +		.name = "gsw",
@@ -146,13 +154,39 @@ index 1b2c4c98de5..c5105c59ec0 100644
 +		.base_shift = 13,
 +		.base_values = emmc7583_base,
 +		.n_base_values = ARRAY_SIZE(emmc7583_base),
++	},
++	[AN7583_CLK_MDIO0] = {
++		.id = AN7583_CLK_MDIO0,
++		.name = "mdio0",
++
++		.base_reg = REG_CRYPTO_CLKSRC2,
++
++		.base_value = 25000000,
++
++		.div_bits = 4,
++		.div_shift = 15,
++		.div_step = 1,
++		.div_offset = 1,
++	},
++	[AN7583_CLK_MDIO1] = {
++		.id = AN7583_CLK_MDIO1,
++		.name = "mdio1",
++
++		.base_reg = REG_CRYPTO_CLKSRC2,
++
++		.base_value = 25000000,
++
++		.div_bits = 4,
++		.div_shift = 19,
++		.div_step = 1,
++		.div_offset = 1,
 +	}
 +};
 +
  static u32 airoha_clk_get_base_rate(const struct airoha_clk_desc *desc, u32 val)
  {
  	if (!desc->base_bits)
-@@ -436,10 +559,18 @@ static const struct airoha_clk_soc_data en7581_data = {
+@@ -436,10 +586,18 @@ static const struct airoha_clk_soc_data en7581_data = {
  	.descs = en7581_base_clks,
  };
  
@@ -172,5 +206,5 @@ index 1b2c4c98de5..c5105c59ec0 100644
  };
  
 -- 
-2.48.1
+2.51.0
 

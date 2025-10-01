@@ -1,0 +1,294 @@
+From 47c5f7860d17ed0caab99047e535315afe98c12d Mon Sep 17 00:00:00 2001
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Wed, 1 Oct 2025 03:58:32 +0200
+Subject: [PATCH] net: airoha: add initial support for multiple GDM port
+
+Rework the driver to support multiple GDM port. The driver is split to
+main driver as a MISC driver with forced probe (by using the
+DM_FLAG_PROBE_AFTER_BIND) and each GDM port register a ETH driver.
+
+This permit a 1:1 implementation with the linux kernel driver and permit
+to use the same exact DT nodes.
+
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+---
+ drivers/net/airoha_eth.c | 124 +++++++++++++++++++++++++++++++++------
+ 1 file changed, 106 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/net/airoha_eth.c b/drivers/net/airoha_eth.c
+index 85412882f7f..83357cf5bf1 100644
+--- a/drivers/net/airoha_eth.c
++++ b/drivers/net/airoha_eth.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include <dm.h>
++#include <dm/device-internal.h>
+ #include <dm/devres.h>
+ #include <dm/lists.h>
+ #include <mapmem.h>
+@@ -266,6 +267,21 @@
+ #define QDMA_ETH_RXMSG_CRSN_MASK	GENMASK(20, 16)
+ #define QDMA_ETH_RXMSG_PPE_ENTRY_MASK	GENMASK(15, 0)
+ 
++enum {
++	FE_PSE_PORT_CDM1,
++	FE_PSE_PORT_GDM1,
++	FE_PSE_PORT_GDM2,
++	FE_PSE_PORT_GDM3,
++	FE_PSE_PORT_PPE1,
++	FE_PSE_PORT_CDM2,
++	FE_PSE_PORT_CDM3,
++	FE_PSE_PORT_CDM4,
++	FE_PSE_PORT_PPE2,
++	FE_PSE_PORT_GDM4,
++	FE_PSE_PORT_CDM5,
++	FE_PSE_PORT_DROP = 0xf,
++};
++
+ struct airoha_qdma_desc {
+ 	__le32 rsv;
+ 	__le32 ctrl;
+@@ -329,11 +345,14 @@ struct airoha_eth {
+ 	struct reset_ctl_bulk rsts;
+ 	struct reset_ctl_bulk xsi_rsts;
+ 
++	struct airoha_eth_soc_data *soc;
++
+ 	struct airoha_qdma qdma[AIROHA_MAX_NUM_QDMA];
+ 	struct airoha_gdm_port *ports[AIROHA_MAX_NUM_GDM_PORTS];
+ };
+ 
+ struct airoha_eth_soc_data {
++	u32 version;
+ 	int num_xsi_rsts;
+ 	const char * const *xsi_rsts_names;
+ 	ofnode (*get_scu_node)(struct udevice *dev);
+@@ -400,6 +419,22 @@ static u32 airoha_rmw(void __iomem *base, u32 offset, u32 mask, u32 val)
+ #define airoha_switch_rmw(eth, offset, mask, val)		\
+ 	airoha_rmw((eth)->switch_regs, (offset), (mask), (val))
+ 
++static struct driver airoha_eth_port;
++
++static int airoha_get_fe_port(struct airoha_gdm_port *port)
++{
++	struct airoha_qdma *qdma = port->qdma;
++	struct airoha_eth *eth = qdma->eth;
++
++	switch (eth->soc->version) {
++	case 0x7583:
++		return port->id == 3 ? FE_PSE_PORT_GDM3 : port->id;
++	case 0x7581:
++	default:
++		return port->id == 4 ? FE_PSE_PORT_GDM4 : port->id;
++	}
++}
++
+ static void airoha_fe_maccr_init(struct airoha_eth *eth)
+ {
+ 	int p;
+@@ -875,12 +910,25 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
+ 	return 0;
+ }
+ 
++static int airoha_alloc_gdm_port(struct udevice *dev, ofnode node)
++{
++	struct airoha_eth *eth = dev_get_priv(dev);
++	struct udevice *gdm_dev;
++	int ret;
++
++	ret = device_bind_with_driver_data(dev, &airoha_eth_port,
++					   "airoha-eth-port", (ulong)eth,
++					   node, &gdm_dev);
++
++	return ret;
++}
++
+ static int airoha_eth_probe(struct udevice *dev)
+ {
+ 	struct airoha_eth_soc_data *data = (void *)dev_get_driver_data(dev);
+ 	struct airoha_eth *eth = dev_get_priv(dev);
+ 	struct regmap *scu_regmap;
+-	ofnode scu_node;
++	ofnode scu_node, node;
+ 	int i, ret;
+ 
+ 	scu_node = data->get_scu_node(dev);
+@@ -897,6 +945,8 @@ static int airoha_eth_probe(struct udevice *dev)
+ 	 */
+ 	regmap_write(scu_regmap, SCU_SHARE_FEMEM_SEL, 0x0);
+ 
++	eth->soc = data;
++
+ 	eth->fe_regs = dev_remap_addr_name(dev, "fe");
+ 	if (!eth->fe_regs)
+ 		return -ENOMEM;
+@@ -936,13 +986,35 @@ static int airoha_eth_probe(struct udevice *dev)
+ 	if (ret)
+ 		return ret;
+ 
++	ofnode_for_each_subnode(node, dev_ofnode(dev)) {
++		if (!ofnode_device_is_compatible(node, "airoha,eth-mac"))
++			continue;
++
++		if (!ofnode_is_enabled(node))
++			continue;
++
++		ret = airoha_alloc_gdm_port(dev, node);
++		if (ret)
++			return ret;
++	}
++
+ 	return airoha_switch_init(dev, eth);
+ }
+ 
++static int airoha_eth_port_probe(struct udevice *dev)
++{
++	struct airoha_eth *eth = (void *)dev_get_driver_data(dev);
++	struct airoha_gdm_port *port = dev_get_priv(dev);
++
++	port->qdma = &eth->qdma[0];
++
++	return 0;
++}
++
+ static int airoha_eth_init(struct udevice *dev)
+ {
+-	struct airoha_eth *eth = dev_get_priv(dev);
+-	struct airoha_qdma *qdma = &eth->qdma[0];
++	struct airoha_gdm_port *port = dev_get_priv(dev);
++	struct airoha_qdma *qdma = port->qdma;
+ 	struct airoha_queue *q;
+ 	int qid;
+ 
+@@ -960,8 +1032,8 @@ static int airoha_eth_init(struct udevice *dev)
+ 
+ static void airoha_eth_stop(struct udevice *dev)
+ {
+-	struct airoha_eth *eth = dev_get_priv(dev);
+-	struct airoha_qdma *qdma = &eth->qdma[0];
++	struct airoha_gdm_port *port = dev_get_priv(dev);
++	struct airoha_qdma *qdma = port->qdma;
+ 
+ 	airoha_qdma_clear(qdma, REG_QDMA_GLOBAL_CFG,
+ 			  GLOBAL_CFG_TX_DMA_EN_MASK |
+@@ -970,8 +1042,8 @@ static void airoha_eth_stop(struct udevice *dev)
+ 
+ static int airoha_eth_send(struct udevice *dev, void *packet, int length)
+ {
+-	struct airoha_eth *eth = dev_get_priv(dev);
+-	struct airoha_qdma *qdma = &eth->qdma[0];
++	struct airoha_gdm_port *port = dev_get_priv(dev);
++	struct airoha_qdma *qdma = port->qdma;
+ 	struct airoha_qdma_desc *desc;
+ 	struct airoha_queue *q;
+ 	dma_addr_t dma_addr;
+@@ -990,7 +1062,7 @@ static int airoha_eth_send(struct udevice *dev, void *packet, int length)
+ 	desc = &q->desc[index];
+ 	index = (index + 1) % q->ndesc;
+ 
+-	fport = 1;
++	fport = airoha_get_fe_port(port);
+ 
+ 	msg0 = 0;
+ 	msg1 = FIELD_PREP(QDMA_ETH_TXMSG_FPORT_MASK, fport) |
+@@ -1031,8 +1103,8 @@ static int airoha_eth_send(struct udevice *dev, void *packet, int length)
+ 
+ static int airoha_eth_recv(struct udevice *dev, int flags, uchar **packetp)
+ {
+-	struct airoha_eth *eth = dev_get_priv(dev);
+-	struct airoha_qdma *qdma = &eth->qdma[0];
++	struct airoha_gdm_port *port = dev_get_priv(dev);
++	struct airoha_qdma *qdma = port->qdma;
+ 	struct airoha_qdma_desc *desc;
+ 	struct airoha_queue *q;
+ 	int qid, index;
+@@ -1062,8 +1134,8 @@ static int airoha_eth_recv(struct udevice *dev, int flags, uchar **packetp)
+ 
+ static int arht_eth_free_pkt(struct udevice *dev, uchar *packet, int length)
+ {
+-	struct airoha_eth *eth = dev_get_priv(dev);
+-	struct airoha_qdma *qdma = &eth->qdma[0];
++	struct airoha_gdm_port *port = dev_get_priv(dev);
++	struct airoha_qdma *qdma = port->qdma;
+ 	struct airoha_queue *q;
+ 	int qid, index;
+ 
+@@ -1087,8 +1159,9 @@ static int arht_eth_free_pkt(struct udevice *dev, uchar *packet, int length)
+ 
+ static int arht_eth_write_hwaddr(struct udevice *dev)
+ {
++	struct airoha_gdm_port *port = dev_get_priv(dev);
+ 	struct eth_pdata *pdata = dev_get_plat(dev);
+-	struct airoha_eth *eth = dev_get_priv(dev);
++	struct airoha_qdma *qdma = port->qdma;
+ 	unsigned char *mac = pdata->enetaddr;
+ 	u32 macaddr_lsb, macaddr_msb;
+ 
+@@ -1100,8 +1173,8 @@ static int arht_eth_write_hwaddr(struct udevice *dev)
+ 		      FIELD_PREP(SMACCR1_MAC0, mac[0]);
+ 
+ 	/* Set MAC for Switch */
+-	airoha_switch_wr(eth, SWITCH_SMACCR0, macaddr_lsb);
+-	airoha_switch_wr(eth, SWITCH_SMACCR1, macaddr_msb);
++	airoha_switch_wr(qdma->eth, SWITCH_SMACCR0, macaddr_lsb);
++	airoha_switch_wr(qdma->eth, SWITCH_SMACCR1, macaddr_msb);
+ 
+ 	return 0;
+ }
+@@ -1130,6 +1203,12 @@ static int airoha_eth_bind(struct udevice *dev)
+ 	ofnode switch_node;
+ 	int ret = 0;
+ 
++	/*
++	 * Force Probe as we set the Main ETH driver as misc
++	 * to register multiple eth port for each GDM
++	 */
++	dev_or_flags(dev, DM_FLAG_PROBE_AFTER_BIND);
++
+ 	if (!CONFIG_IS_ENABLED(MDIO_MT7531))
+ 		return 0;
+ 
+@@ -1149,6 +1228,7 @@ static int airoha_eth_bind(struct udevice *dev)
+ }
+ 
+ static const struct airoha_eth_soc_data en7581_data = {
++	.version = 0x7581,
+ 	.xsi_rsts_names = en7581_xsi_rsts_names,
+ 	.num_xsi_rsts = ARRAY_SIZE(en7581_xsi_rsts_names),
+ 	.get_scu_node = en7581_get_scu_node,
+@@ -1156,6 +1236,7 @@ static const struct airoha_eth_soc_data en7581_data = {
+ };
+ 
+ static const struct airoha_eth_soc_data an7583_data = {
++	.version = 0x7583,
+ 	.xsi_rsts_names = an7583_xsi_rsts_names,
+ 	.num_xsi_rsts = ARRAY_SIZE(an7583_xsi_rsts_names),
+ 	.get_scu_node = an7583_get_scu_node,
+@@ -1180,13 +1261,20 @@ static const struct eth_ops airoha_eth_ops = {
+ 	.write_hwaddr = arht_eth_write_hwaddr,
+ };
+ 
++static struct driver airoha_eth_port = {
++	.name = "airoha-eth-port",
++	.id = UCLASS_ETH,
++	.probe = airoha_eth_port_probe,
++	.ops = &airoha_eth_ops,
++	.priv_auto = sizeof(struct airoha_gdm_port),
++	.plat_auto = sizeof(struct eth_pdata),
++};
++
+ U_BOOT_DRIVER(airoha_eth) = {
+ 	.name = "airoha-eth",
+-	.id = UCLASS_ETH,
++	.id = UCLASS_MISC,
+ 	.of_match = airoha_eth_ids,
+ 	.probe = airoha_eth_probe,
+ 	.bind = airoha_eth_bind,
+-	.ops = &airoha_eth_ops,
+ 	.priv_auto = sizeof(struct airoha_eth),
+-	.plat_auto = sizeof(struct eth_pdata),
+ };
+-- 
+2.51.0
+
