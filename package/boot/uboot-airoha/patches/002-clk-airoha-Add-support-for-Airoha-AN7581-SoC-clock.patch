@@ -22,11 +22,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  create mode 100644 drivers/clk/airoha/clk-airoha.c
 
 diff --git a/drivers/clk/Makefile b/drivers/clk/Makefile
-index fe0e49f6112..8411205ee04 100644
+index 7f84f22d4b1..9a0fc536e25 100644
 --- a/drivers/clk/Makefile
 +++ b/drivers/clk/Makefile
-@@ -14,6 +14,7 @@ obj-$(CONFIG_$(PHASE_)CLK_GPIO) += clk-gpio.o
- obj-$(CONFIG_$(PHASE_)CLK_STUB) += clk-stub.o
+@@ -13,6 +13,7 @@ obj-$(CONFIG_$(PHASE_)CLK_COMPOSITE_CCF) += clk-composite.o
+ obj-$(CONFIG_$(PHASE_)CLK_GPIO) += clk-gpio.o
  
  obj-y += adi/
 +obj-y += airoha/
