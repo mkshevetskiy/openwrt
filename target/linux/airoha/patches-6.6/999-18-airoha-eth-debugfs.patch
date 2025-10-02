@@ -131,16 +131,16 @@
  				 struct device_node *np, int index)
  {
 @@ -2509,6 +2632,10 @@ static int airoha_alloc_gdm_port(struct
- 			goto free_metadata_dst;
- 	}
+ 		if (!port)
+ 			continue;
  
-+	err = airoha_register_port_debugfs(port);
-+	if (err)
-+		goto free_metadata_dst;
++		err = airoha_register_port_debugfs(port);
++		if (err)
++			return err;
 +
- 	err = register_netdev(dev);
- 	if (err)
- 		goto free_metadata_dst;
+ 		err = airoha_setup_phylink(port->dev);
+ 		if (err)
+ 			return err;
 @@ -2568,6 +2695,7 @@ static int airoha_probe(struct platform_
  	strscpy(eth->napi_dev->name, "qdma_eth", sizeof(eth->napi_dev->name));
  	platform_set_drvdata(pdev, eth);
