@@ -12,10 +12,10 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  4 files changed, 70 insertions(+)
 
 diff --git a/arch/arm/dts/an7581-u-boot.dtsi b/arch/arm/dts/an7581-u-boot.dtsi
-index a9297ca6503..1960b8ca300 100644
+index 9ee0f808660..5318ba417da 100644
 --- a/arch/arm/dts/an7581-u-boot.dtsi
 +++ b/arch/arm/dts/an7581-u-boot.dtsi
-@@ -76,6 +76,22 @@
+@@ -147,6 +147,22 @@
  				spi-max-frequency = <50000000>;
  				spi-tx-bus-width = <1>;
  				spi-rx-bus-width = <2>;
@@ -39,7 +39,7 @@ index a9297ca6503..1960b8ca300 100644
  		};
  
 diff --git a/arch/arm/dts/an7583-evb.dts b/arch/arm/dts/an7583-evb.dts
-index d02cd194e8a..096dd395c90 100644
+index 714c90eadfe..167b3225f92 100644
 --- a/arch/arm/dts/an7583-evb.dts
 +++ b/arch/arm/dts/an7583-evb.dts
 @@ -46,6 +46,28 @@
@@ -72,11 +72,11 @@ index d02cd194e8a..096dd395c90 100644
  	pinctrl-names = "default";
  	pinctrl-0 = <&pcie0_rst_pins>;
 diff --git a/configs/an7581_evb_defconfig b/configs/an7581_evb_defconfig
-index c74247e13db..6006bebd04d 100644
+index 2cfc7c119a0..853b6e6d564 100644
 --- a/configs/an7581_evb_defconfig
 +++ b/configs/an7581_evb_defconfig
-@@ -79,3 +79,19 @@ CONFIG_SHA512=y
- CONFIG_AIROHA_ETH=y
+@@ -83,3 +83,19 @@ CONFIG_CMD_MII=y
+ CONFIG_CMD_MDIO=y
  CONFIG_MMC_MTK=y
  CONFIG_AIROHA_SNFI_SPI=y
 +CONFIG_CMD_UBI=y
@@ -96,11 +96,11 @@ index c74247e13db..6006bebd04d 100644
 +# CONFIG_UBIFS_SILENCE_MSG is not set
 +# CONFIG_UBIFS_SILENCE_DEBUG_DUMP is not set
 diff --git a/configs/an7583_evb_defconfig b/configs/an7583_evb_defconfig
-index 89b4e180015..8577f53a9c7 100644
+index fe26bc323cd..8cf784cc0ea 100644
 --- a/configs/an7583_evb_defconfig
 +++ b/configs/an7583_evb_defconfig
-@@ -81,3 +81,19 @@ CONFIG_SHA512=y
- CONFIG_AIROHA_ETH=y
+@@ -84,3 +84,19 @@ CONFIG_CMD_MII=y
+ CONFIG_CMD_MDIO=y
  CONFIG_MMC_MTK=y
  CONFIG_AIROHA_SNFI_SPI=y
 +CONFIG_CMD_UBI=y
