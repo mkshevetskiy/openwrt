@@ -1,0 +1,159 @@
+From 4bdc45976174cb8a1b383832c87885ff38401491 Mon Sep 17 00:00:00 2001
+From: Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
+Date: Fri, 5 Sep 2025 02:18:14 +0300
+Subject: [PATCH 03/12] net: airoha: use phy phandle to setup gdm port
+
+A GDM port may be connected to a phy, if so phy must be configured.
+
+This patch
+ * Try to find a phy for a GDM port,
+ * If phy was found:
+   * Try connect it to the ethernet device,
+   * Configures and starts the phy.
+   * Link phy's mdio with ethernet device
+
+Signed-off-by: Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
+---
+ drivers/net/airoha_eth.c | 82 +++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 77 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/airoha_eth.c b/drivers/net/airoha_eth.c
+index 6797ba336ab..1a9bb752fca 100644
+--- a/drivers/net/airoha_eth.c
++++ b/drivers/net/airoha_eth.c
+@@ -13,6 +13,8 @@
+ #include <dm/devres.h>
+ #include <dm/lists.h>
+ #include <mapmem.h>
++#include <eth_phy.h>
++#include <miiphy.h>
+ #include <net.h>
+ #include <regmap.h>
+ #include <reset.h>
+@@ -337,6 +339,11 @@ struct airoha_qdma {
+ 
+ struct airoha_gdm_port {
+ 	struct airoha_qdma *qdma;
++
++	struct mii_dev *mdio_bus;
++	struct phy_device *phydev;
++	bool phy_configured;
++
+ 	int id;
+ };
+ 
+@@ -734,15 +741,44 @@ static int airoha_qdma_init(struct udevice *dev,
+ 	return airoha_qdma_hw_init(qdma);
+ }
+ 
+-static int airoha_pcs_init(struct udevice *dev, ofnode node)
++struct phy_device *connect_phy_by_node(struct udevice *dev, ofnode phynode)
++{
++	u32 phy_addr;
++	struct udevice *mdiodev;
++	struct phy_device *phy;
++
++	if (ofnode_read_u32(phynode, "reg", &phy_addr)) {
++		printf("missing reg property in phy node\n");
++		return NULL;
++	}
++
++	if (uclass_get_device_by_ofnode(UCLASS_MDIO,
++					ofnode_get_parent(phynode),
++					&mdiodev)) {
++		printf("can't find MDIO bus for node %s\n", ofnode_get_name(phynode));
++		return NULL;
++	}
++
++	phy = dm_mdio_phy_connect(mdiodev, phy_addr, dev, PHY_INTERFACE_MODE_NA);
++	if (phy)
++		phy->node = phynode;
++
++	return phy;
++}
++
++static int airoha_pcs_init(struct udevice *dev,
++			   struct airoha_gdm_port *port,
++			   ofnode node)
+ {
+ 	struct airoha_pcs_priv *priv;
++	struct phy_device *phydev;
+ 	struct udevice *pcs_dev;
+ 	phy_interface_t mode;
+ 	const char *managed;
+ 	int pcs_phandle;
+ 	bool neg_mode;
+ 	int speed;
++	ofnode phynode;
+ 	int ret;
+ 
+ 	/* PCS property is mandatory */
+@@ -792,6 +828,18 @@ static int airoha_pcs_init(struct udevice *dev, ofnode node)
+ 
+ 	airoha_pcs_link_up(priv, neg_mode, mode, speed, DUPLEX_FULL);
+ 
++	phynode = ofnode_get_phy_node(node);
++	if (ofnode_valid(phynode)) {
++		phydev = connect_phy_by_node(dev, phynode);
++		if (phydev == NULL) {
++			printf("can't find phy by it's ofnode\n");
++			return -EINVAL;
++		}
++
++		port->mdio_bus = phydev->bus;
++		port->phydev = phydev;
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1033,10 +1081,18 @@ static int airoha_eth_port_probe(struct udevice *dev)
+ 		return err;
+ 
+ 	/* Skip PCS init for embedded Switch */
+-	if (port->id == 1)
+-		return 0;
++	if (port->id != 1) {
++		err = airoha_pcs_init(dev, port, node);
++		if (err)
++			return err;
++	}
+ 
+-	return airoha_pcs_init(dev, node);
++#ifdef CONFIG_DM_ETH_PHY
++	if (!IS_ERR_OR_NULL(port->mdio_bus))
++		eth_phy_set_mdio_bus(dev, port->mdio_bus);
++#endif
++
++	return 0;
+ }
+ 
+ static int airoha_eth_init(struct udevice *dev)
+@@ -1044,7 +1100,23 @@ static int airoha_eth_init(struct udevice *dev)
+ 	struct airoha_gdm_port *port = dev_get_priv(dev);
+ 	struct airoha_qdma *qdma = port->qdma;
+ 	struct airoha_queue *q;
+-	int qid;
++	int qid, err;
++
++	if (port->phydev && !port->phy_configured) {
++		err = phy_config(port->phydev);
++		if (err) {
++			printf("can't configure phy device\n");
++			return err;
++		}
++
++		err = phy_startup(port->phydev);
++		if (err) {
++			printf("can't start phy device\n");
++			return err;
++		}
++
++		port->phy_configured = true;
++	}
+ 
+ 	qid = 0;
+ 	q = &qdma->q_rx[qid];
+-- 
+2.51.0
+
