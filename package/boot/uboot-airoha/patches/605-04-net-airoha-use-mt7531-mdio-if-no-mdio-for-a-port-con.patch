@@ -1,0 +1,128 @@
+From 6aeec0743ac5324c8666db10477a9f244b0de1a5 Mon Sep 17 00:00:00 2001
+From: Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
+Date: Thu, 2 Oct 2025 21:15:43 +0300
+Subject: [PATCH 04/12] net: airoha: use mt7531 mdio if no mdio for a port
+ configured
+
+other ports will use their own mdio (if available)
+
+Signed-off-by: Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
+---
+ drivers/net/airoha_eth.c | 60 ++++++++++++++++++++++++++--------------
+ 1 file changed, 40 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/net/airoha_eth.c b/drivers/net/airoha_eth.c
+index 1a9bb752fca..4304eef6f8b 100644
+--- a/drivers/net/airoha_eth.c
++++ b/drivers/net/airoha_eth.c
+@@ -356,6 +356,7 @@ struct airoha_eth {
+ 
+ 	struct airoha_eth_soc_data *soc;
+ 
++	struct udevice *mdio_dev;
+ 	struct airoha_qdma qdma[AIROHA_MAX_NUM_QDMA];
+ };
+ 
+@@ -973,6 +974,30 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
+ 	return 0;
+ }
+ 
++static void airoha_mdio_init(struct udevice *dev)
++{
++	struct airoha_eth_soc_data *data = (void *)dev_get_driver_data(dev);
++	struct airoha_eth *eth = dev_get_priv(dev);
++	ofnode switch_node;
++	int err = 0;
++
++	if (!CONFIG_IS_ENABLED(MDIO_MT7531))
++		return;
++
++	switch_node = ofnode_by_compatible(ofnode_null(),
++					   data->switch_compatible);
++	if (!ofnode_valid(switch_node)) {
++		debug("Warning: missing switch node\n");
++		return;
++	}
++
++	err = device_bind_driver_to_node(dev, "mt7531-mdio",
++					 ofnode_get_name(switch_node),
++					 switch_node, &eth->mdio_dev);
++	if (err)
++		debug("Warning: failed to bind mdio controller\n");
++}
++
+ static int airoha_eth_probe(struct udevice *dev)
+ {
+ 	struct airoha_eth_soc_data *data = (void *)dev_get_driver_data(dev);
+@@ -1060,6 +1085,8 @@ static int airoha_eth_probe(struct udevice *dev)
+ 			return ret;
+ 	}
+ 
++	airoha_mdio_init(dev);
++
+ 	return 0;
+ }
+ 
+@@ -1067,6 +1094,7 @@ static int airoha_eth_port_probe(struct udevice *dev)
+ {
+ 	struct airoha_eth *eth = (void *)dev_get_driver_data(dev);
+ 	struct airoha_gdm_port *port = dev_get_priv(dev);
++	struct mdio_perdev_priv *pdata;
+ 	ofnode node = dev_ofnode(dev);
+ 	int err;
+ 
+@@ -1087,6 +1115,18 @@ static int airoha_eth_port_probe(struct udevice *dev)
+ 			return err;
+ 	}
+ 
++	if (!port->mdio_bus) {
++		/* use build-in MDIO */
++		if (!eth->mdio_dev)
++			return 0;
++
++		if (device_probe(eth->mdio_dev))
++			return 0;
++
++		pdata = dev_get_uclass_priv(eth->mdio_dev);
++		port->mdio_bus = pdata->mii_bus;
++	}
++
+ #ifdef CONFIG_DM_ETH_PHY
+ 	if (!IS_ERR_OR_NULL(port->mdio_bus))
+ 		eth_phy_set_mdio_bus(dev, port->mdio_bus);
+@@ -1311,32 +1351,12 @@ static ofnode an7583_get_scu_node(struct udevice *dev)
+ 
+ static int airoha_eth_bind(struct udevice *dev)
+ {
+-	struct airoha_eth_soc_data *data = (void *)dev_get_driver_data(dev);
+-	struct udevice *mdio_dev;
+-	ofnode switch_node;
+-	int ret = 0;
+-
+ 	/*
+ 	 * Force Probe as we set the Main ETH driver as misc
+ 	 * to register multiple eth port for each GDM
+ 	 */
+ 	dev_or_flags(dev, DM_FLAG_PROBE_AFTER_BIND);
+ 
+-	if (!CONFIG_IS_ENABLED(MDIO_MT7531))
+-		return 0;
+-
+-	switch_node = ofnode_by_compatible(ofnode_null(),
+-					   data->switch_compatible);
+-	if (!ofnode_valid(switch_node)) {
+-		debug("Warning: missing switch node\n");
+-		return 0;
+-	}
+-
+-	ret = device_bind_driver_to_node(dev, "mt7531-mdio", "mdio",
+-					 switch_node, &mdio_dev);
+-	if (ret)
+-		debug("Warning: failed to bind mdio controller\n");
+-
+ 	return 0;
+ }
+ 
+-- 
+2.51.0
+
