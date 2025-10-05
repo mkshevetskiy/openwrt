@@ -81,7 +81,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	npu->ops.wlan_init_reserved_memory = airoha_npu_wlan_init_memory;
 --- a/drivers/net/ethernet/airoha/airoha_ppe.c
 +++ b/drivers/net/ethernet/airoha/airoha_ppe.c
-@@ -1264,12 +1264,11 @@ static int airoha_ppe_flush_sram_entries
+@@ -1246,12 +1246,11 @@ static int airoha_ppe_flush_sram_entries
  
  static struct airoha_npu *airoha_ppe_npu_get(struct airoha_eth *eth)
  {
@@ -96,7 +96,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	}
  
  	return npu;
-@@ -1278,6 +1277,7 @@ static struct airoha_npu *airoha_ppe_npu
+@@ -1260,6 +1259,7 @@ static struct airoha_npu *airoha_ppe_npu
  static int airoha_ppe_offload_setup(struct airoha_eth *eth)
  {
  	struct airoha_npu *npu = airoha_ppe_npu_get(eth);
@@ -104,7 +104,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	int err;
  
  	if (IS_ERR(npu))
-@@ -1287,12 +1287,19 @@ static int airoha_ppe_offload_setup(stru
+@@ -1269,12 +1269,19 @@ static int airoha_ppe_offload_setup(stru
  	if (err)
  		goto error_npu_put;
  

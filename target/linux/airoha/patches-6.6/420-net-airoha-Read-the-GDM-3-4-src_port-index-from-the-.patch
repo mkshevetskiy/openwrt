@@ -17,7 +17,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
 
 --- a/drivers/net/ethernet/airoha/airoha_eth.c
 +++ b/drivers/net/ethernet/airoha/airoha_eth.c
-@@ -1869,8 +1869,8 @@ static int airoha_dev_set_macaddr(struct
+@@ -1742,8 +1742,8 @@ static int airoha_dev_set_macaddr(struct
  static void airhoha_set_gdm2_loopback(struct airoha_gdm_port *port)
  {
  	u32 pse_port = port->id == 3 ? FE_PSE_PORT_GDM3 : FE_PSE_PORT_GDM4;
@@ -27,7 +27,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  	/* Forward the traffic to the proper GDM port */
  	airoha_set_gdm_port_fwd_cfg(eth, REG_GDM_FWD_CFG(2), pse_port);
-@@ -1891,29 +1891,21 @@ static void airhoha_set_gdm2_loopback(st
+@@ -1764,29 +1764,21 @@ static void airhoha_set_gdm2_loopback(st
  	airoha_fe_clear(eth, REG_FE_VIP_PORT_EN, BIT(2));
  	airoha_fe_clear(eth, REG_FE_IFC_PORT_EN, BIT(2));
  
@@ -69,17 +69,17 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  }
  
  static int airoha_dev_init(struct net_device *dev)
-@@ -3352,6 +3344,7 @@ static int airoha_alloc_gdm_port(struct
+@@ -3051,6 +3043,7 @@ static int airoha_alloc_gdm_port(struct
  	port->qdma = qdma;
  	port->dev = dev;
  	port->id = id;
 +	port->np = np;
  	eth->ports[p] = port;
  
- 	err = airoha_metadata_dst_alloc(port);
+ 	return airoha_metadata_dst_alloc(port);
 --- a/drivers/net/ethernet/airoha/airoha_eth.h
 +++ b/drivers/net/ethernet/airoha/airoha_eth.h
-@@ -525,6 +525,7 @@ struct airoha_qdma {
+@@ -514,6 +514,7 @@ struct airoha_qdma {
  struct airoha_gdm_port {
  	struct airoha_qdma *qdma;
  	struct net_device *dev;
@@ -89,7 +89,7 @@ Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	struct phylink *phylink;
 --- a/drivers/net/ethernet/airoha/airoha_regs.h
 +++ b/drivers/net/ethernet/airoha/airoha_regs.h
-@@ -403,10 +403,7 @@
+@@ -386,10 +386,7 @@
  #define REG_MC_VLAN_DATA		0x2108
  
  #define REG_SP_DFT_CPORT(_n)		(0x20e0 + ((_n) << 2))
