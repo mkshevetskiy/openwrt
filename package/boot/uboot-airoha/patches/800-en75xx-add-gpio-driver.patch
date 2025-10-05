@@ -1,0 +1,232 @@
+From a27587358315c43e01d6837b71cd34d7680bd51c Mon Sep 17 00:00:00 2001
+From: Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
+Date: Fri, 18 Nov 2022 12:41:15 +0300
+Subject: [PATCH] en75xx: add gpio driver
+
+Signed-off-by: Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
+---
+ drivers/gpio/Kconfig       |   8 ++
+ drivers/gpio/Makefile      |   1 +
+ drivers/gpio/en75xx_gpio.c | 179 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 188 insertions(+)
+ create mode 100644 drivers/gpio/en75xx_gpio.c
+
+diff --git a/drivers/gpio/Kconfig b/drivers/gpio/Kconfig
+index f4a453e1cdd..a7328e5d8af 100644
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -643,6 +643,14 @@ config MT7621_GPIO
+ 	help
+ 	  Say yes here to support MediaTek MT7621 compatible GPIOs.
+ 
++config EN75XX_GPIO
++	bool "Airoha/Econet en75xx GPIO driver"
++	depends on DM_GPIO && ARCH_AIROHA
++	default y
++	help
++	  Device model driver for GPIO controller present in Airoha/Econet
++	  en75xx SoCs.
++
+ config NX_GPIO
+ 	bool "Nexell GPIO driver"
+ 	depends on DM_GPIO
+diff --git a/drivers/gpio/Makefile b/drivers/gpio/Makefile
+index 3f882c065d8..409bb984675 100644
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -67,6 +67,7 @@ obj-$(CONFIG_$(XPL_)PCF8575_GPIO)	+= pcf8575_gpio.o
+ obj-$(CONFIG_$(PHASE_)QCOM_PMIC_GPIO)	+= qcom_pmic_gpio.o
+ obj-$(CONFIG_MT7620_GPIO)	+= mt7620_gpio.o
+ obj-$(CONFIG_MT7621_GPIO)	+= mt7621_gpio.o
++obj-$(CONFIG_EN75XX_GPIO)	+= en75xx_gpio.o
+ obj-$(CONFIG_MSCC_SGPIO)	+= mscc_sgpio.o
+ obj-$(CONFIG_NX_GPIO)		+= nx_gpio.o
+ obj-$(CONFIG_SIFIVE_GPIO)	+= sifive-gpio.o
+diff --git a/drivers/gpio/en75xx_gpio.c b/drivers/gpio/en75xx_gpio.c
+new file mode 100644
+index 00000000000..c47e0b6dead
+--- /dev/null
++++ b/drivers/gpio/en75xx_gpio.c
+@@ -0,0 +1,179 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2022 Mikhail Kshevetskiy <mikhail.kshevetskiy@iopsys.eu>
++ *
++ * Based on the Mediatek mt7620_gpio driver which is:
++ *   Copyright (C) 2020 Weijie Gao <weijie.gao@mediatek.com>
++ * Mediatek mt7620_gpio driver based on Linux driver version which is:
++ *   Copyright (C) 2009-2011 Gabor Juhos <juhosg@openwrt.org>
++ *   Copyright (C) 2013 John Crispin <blogic@openwrt.org>
++ */
++
++#include <dm.h>
++#include <errno.h>
++#include <dm/device_compat.h>
++#include <linux/bitops.h>
++#include <linux/io.h>
++#include <asm/gpio.h>
++
++#define EN75XX_GPIO_MAX		32
++
++/**
++ * en75xx_gpio_priv - en75xx GPIO driver data
++ * @data: The data register.
++ * @dir[0]: The direction register for the lower 16 pins.
++ * @dir[1]: The direction register for the higher 16 pins.
++ * @output: The output enable register.
++ */
++struct en75xx_gpio_priv {
++	u32 __iomem *data;
++	u32 __iomem *dir[2];
++	u32 __iomem *output;
++	u32 count;
++};
++
++static int en75xx_gpio_get_value(struct udevice *dev, unsigned int offset)
++{
++	struct en75xx_gpio_priv *priv = dev_get_priv(dev);
++	return (ioread32(priv->data) & BIT(offset)) ? 1 : 0;
++}
++
++static int en75xx_gpio_set_value(struct udevice *dev, unsigned int offset,
++				 int value)
++{
++	struct en75xx_gpio_priv *priv = dev_get_priv(dev);
++	u32 data = ioread32(priv->data);
++	u32 old_data = data;
++
++	if (value)
++		data |= BIT(offset);
++	else
++		data &= ~BIT(offset);
++
++	if (old_data != data)
++		iowrite32(data, priv->data);
++
++	return 0;
++}
++
++static int en75xx_gpio_get_function(struct udevice *dev, unsigned int offset)
++{
++	struct en75xx_gpio_priv *priv = dev_get_priv(dev);
++	u32 dir = ioread32(priv->dir[offset / 16]);
++	u32 shift = (offset % 16) * 2;
++
++	switch((dir >> shift) & 0x03) {
++	    case 0: return GPIOF_INPUT;
++	    case 1: return GPIOF_OUTPUT;
++	    default: break;
++	}
++	return -EINVAL;
++}
++
++static int en75xx_dir_set(struct udevice *dev, unsigned int offset,
++			  int type, int value)
++{
++	struct en75xx_gpio_priv *priv = dev_get_priv(dev);
++	u32 output = ioread32(priv->output);
++	u32 dir = ioread32(priv->dir[offset / 16]);
++	u32 shift = (offset % 16) * 2;
++	u32 old_output = output, old_dir = dir;
++
++	dir &= ~(0x3 << shift);
++	output &= ~BIT(offset);
++	if (type) {
++		dir |= (0x1 << shift);
++		output |= BIT(offset);
++	}
++
++	if (old_dir != dir)
++		iowrite32(dir, priv->dir[offset / 16]);
++
++	if (type)
++		en75xx_gpio_set_value(dev, offset, value);
++
++	if (old_output != output)
++		iowrite32(output, priv->output);
++
++	return 0;
++}
++
++static int en75xx_gpio_direction_input(struct udevice *dev, unsigned int offset)
++{
++	return en75xx_dir_set(dev, offset, 0, 0);
++}
++
++static int en75xx_gpio_direction_output(struct udevice *dev,
++					unsigned int offset, int value)
++{
++	return en75xx_dir_set(dev, offset, 1, value);
++}
++
++static const struct dm_gpio_ops en75xx_gpio_ops = {
++	.direction_input	= en75xx_gpio_direction_input,
++	.direction_output	= en75xx_gpio_direction_output,
++	.get_value		= en75xx_gpio_get_value,
++	.set_value		= en75xx_gpio_set_value,
++	.get_function		= en75xx_gpio_get_function,
++};
++
++static int en75xx_gpio_probe(struct udevice *dev)
++{
++	struct en75xx_gpio_priv *priv = dev_get_priv(dev);
++	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
++	const char *name;
++
++	name = dev_read_string(dev, "airoha,bank-name");
++	if (!name)
++		name = dev->name;
++
++	uc_priv->gpio_count = priv->count;
++	uc_priv->bank_name = name;
++
++	return 0;
++}
++
++static int en75xx_gpio_of_to_plat(struct udevice *dev)
++{
++	struct en75xx_gpio_priv *priv = dev_get_priv(dev);
++	int i;
++
++	priv->data = dev_remap_addr_index(dev, 0);
++	if (!priv->data) {
++		dev_err(dev, "en75xx_gpio: unable to map data register\n");
++		return -EINVAL;
++	}
++
++	for(i = 0; i < 2; i++) {
++		priv->dir[i] = dev_remap_addr_index(dev, i + 1);
++		if (!priv->dir[i]) {
++			dev_err(dev, "en75xx_gpio: unable to map direction %d register\n", i);
++			return -EINVAL;
++		}
++	}
++
++	priv->output = dev_remap_addr_index(dev, 3);
++	if (!priv->output) {
++		dev_err(dev, "en75xx_gpio: unable to map output register\n");
++		return -EINVAL;
++	}
++
++	priv->count = EN75XX_GPIO_MAX;
++
++	return 0;
++}
++
++static const struct udevice_id en75xx_gpio_ids[] = {
++	{ .compatible = "airoha,en7523-gpio" },
++	{ }
++};
++
++U_BOOT_DRIVER(en75xx_gpio) = {
++	.name	= "en75xx_gpio",
++	.id	= UCLASS_GPIO,
++	.ops	= &en75xx_gpio_ops,
++	.of_match = en75xx_gpio_ids,
++	.probe	= en75xx_gpio_probe,
++	.of_to_plat = en75xx_gpio_of_to_plat,
++	.priv_auto = sizeof(struct en75xx_gpio_priv),
++};
+-- 
+2.51.0
+
