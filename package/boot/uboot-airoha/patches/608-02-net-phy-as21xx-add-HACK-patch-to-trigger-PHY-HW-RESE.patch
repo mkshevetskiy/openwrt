@@ -29,7 +29,7 @@ index 97fc80bf147..5786de53bc4 100644
  
 +	/* HACK to trigger HW reset on GPIO 32 */
 +	if (!phy1_reset && (phydev->addr == 0x1c || phydev->addr == 0x1f)) {
-+		writel(BIT(1), 0x1fbf0260);
++		writel(BIT(0), 0x1fbf0260);
 +		writel(BIT(0), 0x1fbf0278);
 +		writel(0x0, 0x1fbf0270);
 +		udelay(200000);
@@ -40,7 +40,7 @@ index 97fc80bf147..5786de53bc4 100644
 +
 +	/* HACK to trigger HW reset on GPIO 31 */
 +	if (!phy2_reset && phydev->addr == 0x1d) {
-+		writel(BIT(31), 0x1fbf0220);
++		writel(BIT(30), 0x1fbf0220);
 +		writel(BIT(31), 0x1fbf0214);
 +		writel(0x0, 0x1fbf0204);
 +		udelay(200000);
